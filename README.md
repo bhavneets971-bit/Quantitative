@@ -39,7 +39,7 @@ In a Kalman filter, two residuals are naturally produced at each time step:
 Under standard Kalman filter assumptions (linearity, unbiased errors, near-optimal gain), the observation error covariance can be estimated as:
 
 \[
-R \approx \mathbb{E}[ d^a_t (d^b_t)^T ]
+R = E[ d_a · d_bᵀ ]
 \]
 
 This allows estimation of **correlated observation noise** without direct access to the true state.
