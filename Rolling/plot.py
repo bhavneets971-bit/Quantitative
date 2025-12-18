@@ -5,43 +5,47 @@ import matplotlib.pyplot as plt
 # ======================================================
 # Configuration
 # ======================================================
-CSV_PATH = "rolling_R_all.csv"   # adjust path if needed
+CSV_PATH = "rolling_R_all.csv"
 OUTPUT_DIR = "Rolling/plots"
-OUTPUT_FILE = "rolling_variances_all_maturities.png"
+OUTPUT_FILE = "rolling_variances_by_year.png"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ======================================================
-# Load data
+# Load rolling covariance data
 # ======================================================
-df = pd.read_csv(CSV_PATH)
+df = pd.read_csv(CSV_PATH, parse_dates=["window_end_date"])
 
-# Keep only diagonal entries (variances)
-diag = df[df["maturity_i"] == df["maturity_j"]]
+# Keep diagonal entries only (variances)
+diag = df[df["maturity_i"] == df["maturity_j"]].copy()
 
-# Get maturities in consistent order
+# Sort properly by time
+diag = diag.sort_values("window_end_date")
+
 maturities = diag["maturity_i"].unique()
 
 # ======================================================
-# Plot rolling variances
+# Plot rolling variances vs calendar time
 # ======================================================
-plt.figure(figsize=(10, 6))
+plt.figure(figsize=(12, 7))
 
 for m in maturities:
     subset = diag[diag["maturity_i"] == m]
     plt.plot(
-        subset["time_index"],
+        subset["window_end_date"],
         subset["covariance"],
         label=m,
         linewidth=1
     )
 
-plt.xlabel("Rolling window index")
+plt.xlabel("Year")
 plt.ylabel("Observation error variance")
-plt.title("Rolling Observation Error Variance (All Maturities)")
-plt.legend(ncol=2, fontsize=8)
+plt.title("Rolling Observation Error Variance by Maturity")
+plt.legend(ncol=2, fontsize=9)
+plt.grid(alpha=0.3)
 plt.tight_layout()
+
 plt.savefig(os.path.join(OUTPUT_DIR, OUTPUT_FILE))
 plt.close()
 
-print("Rolling variance plot saved to:", os.path.join(OUTPUT_DIR, OUTPUT_FILE))
+print("Saved plot to:", os.path.join(OUTPUT_DIR, OUTPUT_FILE))

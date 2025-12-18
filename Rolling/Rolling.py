@@ -7,16 +7,16 @@ This script estimates a time-varying observation error
 covariance matrix R_t using the Desrosiers innovation
 diagnostic over a rolling window.
 
-Purpose:
----------
-Capture changes in observation noise structure over time,
-instead of assuming a single static covariance.
+Key corrections:
+----------------
+- Uses daily data correctly (WINDOW_LENGTH = 252)
+- Avoids truncating history via full-curve dropna
+- Restricts to stable maturities available since 1990
+- Associates each rolling estimate with a calendar date
 
 Outputs:
 --------
-- A time series of R matrices (one per time step)
-- Optional saving of rolling covariance snapshots
-
+- rolling_R_all.csv (long format)
 ==========================================================
 """
 
@@ -25,21 +25,29 @@ import pandas as pd
 
 
 # ======================================================
-# 1. Load yield curve data
+# 1. Load yield curve data (CORRECTED)
 # ======================================================
 def load_yield_data(csv_path):
     df = pd.read_csv(csv_path)
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.sort_values("Date")
 
-    maturities = [c for c in df.columns if c != "Date"]
-    y = df[maturities].dropna().values
+    # Stable maturities available since early 1990s
+    maturities = [
+        "3 Mo", "6 Mo", "1 Yr",
+        "2 Yr", "5 Yr", "10 Yr", "30 Yr"
+    ]
 
-    return y, maturities
+    df = df[["Date"] + maturities].dropna()
+
+    y = df[maturities].values
+    dates = df["Date"].values
+
+    return y, dates, maturities
 
 
 # ======================================================
-# 2. Run Kalman filter and store residuals
+# 2. Kalman filter (random-walk state)
 # ======================================================
 def run_kalman_filter(y, Q_scale=1e-6, R_scale=1e-4):
     T, n = y.shape
@@ -87,20 +95,18 @@ def make_psd(matrix, eps=1e-6):
 
 
 # ======================================================
-# 4. Rolling Desrosiers estimator
+# 4. Rolling Desrosiers estimator (CORRECTED)
 # ======================================================
-def rolling_desrosiers_R(innovations, analysis_residuals, window):
+def rolling_desrosiers_R(innovations, analysis_residuals, dates, window):
     T, n = innovations.shape
     R_list = []
+    meta = []
 
     for t in range(window, T):
         R_t = np.zeros((n, n))
 
         for s in range(t - window, t):
-            R_t += np.outer(
-                analysis_residuals[s],
-                innovations[s]
-            )
+            R_t += np.outer(analysis_residuals[s], innovations[s])
 
         R_t /= window
         R_t = 0.5 * (R_t + R_t.T)
@@ -108,7 +114,14 @@ def rolling_desrosiers_R(innovations, analysis_residuals, window):
 
         R_list.append(R_t)
 
-    return R_list
+        end_date = pd.Timestamp(dates[t])
+        meta.append({
+            "window_index": t - window,
+            "window_end_date": end_date,
+            "window_end_year": end_date.year + end_date.dayofyear / 365.25
+        })
+
+    return R_list, meta
 
 
 # ======================================================
@@ -116,41 +129,42 @@ def rolling_desrosiers_R(innovations, analysis_residuals, window):
 # ======================================================
 if __name__ == "__main__":
 
-    # ---- Parameters ----
-    WINDOW_LENGTH = 252   # ~1 year of daily data
+    WINDOW_LENGTH = 252  # ~1 trading year (daily data)
 
-    # ---- Load data ----
-    y, maturities = load_yield_data(
+    y, dates, maturities = load_yield_data(
         "data/yield-curve-rates-1990-2024.csv"
     )
 
-    # ---- Run Kalman filter ----
     innovations, analysis_residuals = run_kalman_filter(y)
 
-    # ---- Estimate rolling R ----
-    R_rolling = rolling_desrosiers_R(
+    R_rolling, meta = rolling_desrosiers_R(
         innovations,
         analysis_residuals,
+        dates,
         window=WINDOW_LENGTH
     )
 
-    print(f"Estimated {len(R_rolling)} rolling R matrices.")
-    print("Example R (last window):")
-    print(pd.DataFrame(R_rolling[-1], index=maturities, columns=maturities))
+    print(f"Estimated {len(R_rolling)} rolling R matrices")
+    print("First window end date:", meta[0]["window_end_date"])
+    print("Last  window end date:", meta[-1]["window_end_date"])
 
-    print("\nDone.")
-
+    # ---- Save long-format CSV ----
     rows = []
 
     for t, R_t in enumerate(R_rolling):
+        info = meta[t]
         for i, mi in enumerate(maturities):
             for j, mj in enumerate(maturities):
                 rows.append({
-                    "time_index": t,
+                    "window_index": info["window_index"],
+                    "window_end_date": info["window_end_date"],
+                    "window_end_year": info["window_end_year"],
                     "maturity_i": mi,
                     "maturity_j": mj,
                     "covariance": R_t[i, j]
                 })
 
-    rolling_R_df = pd.DataFrame(rows)
-    rolling_R_df.to_csv("rolling_R_all.csv", index=False)
+    pd.DataFrame(rows).to_csv("rolling_R_all.csv", index=False)
+
+    print("Saved rolling_R_all.csv")
+    print("Done.")
