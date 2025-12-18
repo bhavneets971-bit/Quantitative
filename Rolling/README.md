@@ -115,65 +115,102 @@ This format supports straightforward filtering, aggregation, and visualization.
 
 ---
 
-## Results Summary
+## Key Empirical Findings
 
-Several clear and consistent patterns emerge from the rolling observation error variance estimates.
+### 1. Strong Time Variation in Observation Noise
 
-- **Strong maturity dependence**  
-  Observation noise varies substantially across maturities. Short-term yields exhibit the
-  highest variance, while longer maturities display lower and smoother noise profiles.
-  This ordering remains stable across the sample.
+Observation error variance is clearly non-stationary over the sample period.
 
-- **Pronounced regime change at the short end**  
-  Very short maturities, particularly at the front of the curve, show a marked decline in
-  estimated observation noise over time. This shift occurs gradually and is consistent
-  across nearby short maturities, suggesting a structural improvement in market liquidity
-  or data quality rather than estimation noise.
+- **Early 1990s to early 2000s**  
+  Variance levels are moderate and relatively smooth across maturities, with
+  consistently higher noise at the short end of the curve.
 
-- **Relative stability of the long end**  
-  Longer-dated maturities exhibit comparatively low and slowly evolving observation
-  variance. Changes over time are modest and occur smoothly, indicating a more stable
-  measurement environment at long horizons.
+- **Mid-2000s surge (≈2004–2007)**  
+  A pronounced increase in observation noise appears across all maturities,
+  especially for short and intermediate tenors (3M–2Y). Variance levels rise
+  sharply relative to surrounding periods, consistent with changing market
+  structure and elevated uncertainty.
 
-- **Clear time variation in noise magnitude**  
-  Observation error variance is not constant over the sample. Instead, it evolves
-  gradually, with identifiable periods of higher and lower measurement uncertainty that
-  affect multiple maturities simultaneously.
+- **Global Financial Crisis (≈2008–2009)**  
+  Extremely sharp, short-lived variance spikes are observed, particularly at the
+  short end. These reflect severe market dislocations, liquidity effects, and
+  instability in observed yields.
 
----
+- **Post-2010 low-noise regime**  
+  From roughly 2010 to 2019, observation noise collapses to unusually low levels
+  across the curve, indicating exceptionally clean measurement conditions.
 
-## Interpretation
-
-The rolling estimates indicate that observation noise in yield curve data is both
-maturity-dependent and time-varying. Noise is highest and most regime-sensitive at the
-short end of the curve, while longer maturities display greater stability and lower overall
-measurement uncertainty.
-
-These results imply that observation errors are neither independent across maturities nor
-stationary over long samples. Static diagonal observation error models fail to capture the
-observed variation in noise magnitude and risk overstating confidence during noisier
-periods. Allowing the observation error covariance to evolve over time provides a more
-realistic description of measurement uncertainty and supports more stable filtering
-behavior.
+- **COVID and post-COVID period (2020–2023)**  
+  Observation noise increases again, led by short and intermediate maturities.
+  While less extreme than during the GFC, the increase is clearly visible and
+  economically meaningful.
 
 ---
 
-## Expected vs Observed Behavior
+### 2. Strong Maturity Dependence
+
+Across all regimes, observation noise exhibits a clear term-structure:
+
+- Short maturities (3M–1Y) consistently display the highest variances and the
+  largest regime shifts.
+- Long maturities (10Y–30Y) remain comparatively stable, even during stress
+  periods.
+
+This behavior is consistent with microstructure effects, liquidity variation,
+and policy sensitivity being concentrated at the short end of the curve.
+
+---
+
+### 3. Abrupt Regime Transitions Reflect Structural Change
+
+The sharp variance jumps observed around 2006–2009 are synchronized across
+maturities and persist across rolling windows. This behavior is inconsistent
+with numerical instability and instead reflects genuine deterioration in the
+signal-to-noise ratio of observed yields during periods of market stress.
+
+---
+
+## Modeling Implications
+
+These results directly challenge the validity of static diagonal observation
+error models:
+
+- Observation noise is time-varying
+- Measurement uncertainty differs substantially across maturities
+- Short-end noise dominates during stress periods
+
+Using a fixed diagonal observation error covariance forces the Kalman filter to
+misattribute measurement noise to state dynamics, degrading inference and
+stability. Rolling or adaptive covariance models provide a more realistic
+representation of measurement uncertainty.
+
+---
+
+## Expected vs. Observed Behavior
 
 **Expected**
-- Smooth evolution of observation noise over time  
-- Higher variance at short maturities relative to the long end  
-- Greater regime sensitivity at the front of the curve  
+- Higher noise at short maturities
+- Time variation in observation uncertainty
+- Elevated noise during known stress periods
 
 **Observed**
-- Smooth and stable rolling variance estimates across all maturities  
-- A clear and persistent maturity ordering in noise magnitude  
-- Distinct regime shifts at short maturities, with comparatively stable behavior at longer
-  horizons  
+- All expected patterns are clearly present
+- Stress periods produce sharp, coordinated variance spikes
+- Long maturities remain comparatively stable
+- Post-crisis regimes exhibit unusually low observation noise
 
-The close alignment between expected and observed behavior supports the validity of the
-rolling Desrosiers implementation and suggests that the estimated time variation reflects
-genuine changes in the measurement environment rather than numerical artifacts.
+The close alignment between expectation and observation supports both the rolling
+Desrosiers implementation and its interpretation as genuine observation error.
+
+---
+
+## Conclusion
+
+Rolling observation error variance estimates reveal that yield curve measurement
+noise is structured, time-varying, and maturity-dependent. These features are
+economically interpretable and statistically meaningful, providing strong
+motivation for abandoning static diagonal observation error assumptions in favor
+of adaptive covariance modeling.
 
 ---
 
