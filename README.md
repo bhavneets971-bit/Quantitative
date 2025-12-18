@@ -6,11 +6,11 @@
 
 This project is not a trading strategy by itself, and it is not intended to generate direct buy or sell signals. Its value lies one level deeper, in how market data is interpreted before any trading decision is made.
 
-In fixed-income markets, many trading signals are derived from small changes in the yield curve (level, slope, curvature). If observation noise is mis-specified—especially if correlated noise is treated as independent—models tend to overreact to routine market noise. This leads to false signals, unstable factor estimates, and excessive trading.
+In fixed-income markets, many trading signals are derived from small changes in the yield curve (level, slope, curvature). If observation noise is mis-specified, especially if correlated noise is treated as independent, models tend to overreact to routine market noise. This leads to false signals, unstable factor estimates, and excessive trading.
 
-By explicitly modeling correlated observation errors, this framework helps distinguish genuine yield curve movements from shared measurement noise. In practice, this results in smoother state estimates, more reliable factor extraction, and more realistic assessments of uncertainty. These improvements matter for position sizing, risk management, regime detection, and the robustness of backtests.
+By explicitly modelling correlated observation errors, this framework helps distinguish genuine yield curve movements from shared measurement noise. In practice, this results in smoother state estimates, more reliable factor extraction, and more realistic assessments of uncertainty. These improvements matter for position sizing, risk management, and the robustness of backtests.
 
-In short, the contribution of this work is not to predict markets, but to reduce overconfidence and noise-driven decisions—an effect that can materially improve risk-adjusted performance when embedded inside larger trading or portfolio construction systems.
+In short, the contribution of this work is not to predict markets, but to reduce overconfidence and noise-driven decisions, an effect that can materially improve risk-adjusted performance when embedded inside larger trading or portfolio construction systems.
 
 ## Motivation
 
