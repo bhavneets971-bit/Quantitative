@@ -1,114 +1,75 @@
-# Desrosiers-Based Observation Error Estimation
-## A Kalman Filter Application to Yield Curve Data
+# Observation Error Covariance Estimation and Validation  
+### Innovation-Based Diagnostics with Kalman Filtering
 
 ---
 
-## 1. Project Overview
+## Motivation
 
-This project implements the **Desrosiers method** (Desrosiers & Ivanov, 2001; Desrosiers et al., 2005) to estimate **observation (measurement) error covariance matrices** using innovation-based diagnostics within a **Kalman filtering framework**.
+Many estimation, filtering, and retrieval problems rely on accurate specification of the **observation error covariance matrix (R)**. In practice, R is often assumed to be diagonal for simplicity, implying independent measurement errors across channels or variables. However, this assumption is frequently violated in real-world systems where measurements may share common noise sources, calibration effects, or structural dependencies.
 
-The method is applied to **U.S. Treasury yield curve data**, treating observed yields as noisy measurements of an underlying latent “true” yield curve. The estimated covariance and correlation matrices characterize **correlated observation noise across maturities**, improving upon standard diagonal noise assumptions.
+The goal of this project is to:
+- **Estimate observation error covariance structures directly from data**, rather than assuming them a priori.
+- **Validate whether structured (correlated) error models are statistically justified**, using likelihood-based diagnostics.
+- Build a **methodologically sound foundation** for future applications in optimal estimation and machine-learning–based inference.
 
----
-
-## 2. Signal vs Noise
-
-- **True state**: latent, unobservable quantity (true yield curve)
-- **Observation**: noisy measurement (quoted market yields)
-
-Noise may be structured and correlated across maturities. Accurately estimating this structure is essential for reliable inference.
+This repository explores these questions using **Kalman filtering and innovation diagnostics**, with methods transferable across domains such as remote sensing, finance, and data assimilation.
 
 ---
 
-## 3. State–Space Model
+## The Desrosiers Innovation Diagnostic
 
-### State evolution
-x_t = F x_(t−1) + w_t , w_t ~ N(0, Q)
+The core methodology implemented here is based on the **Desrosiers method** (Desrosiers & Ivanov, 2001; Desrosiers et al., 2005), an innovation-based diagnostic technique for estimating observation error covariance.
 
-### Observation model
-y_t = H x_t + v_t , v_t ~ N(0, R)
+### Key idea
 
-Where:
-- x_t : latent true yield curve  
-- y_t : observed yields  
-- Q   : process noise covariance  
-- R   : observation error covariance (unknown)
+In a Kalman filter, two residuals are naturally produced at each time step:
 
-The goal of this project is to estimate **R**.
+- **Innovation**  
+  \[
+  d^b_t = y_t - H x^b_t
+  \]
+  (difference between observation and forecast)
 
----
+- **Analysis residual**  
+  \[
+  d^a_t = y_t - H x^a_t
+  \]
+  (difference between observation and updated state)
 
-## 4. Kalman Filter Mechanics
+Under standard Kalman filter assumptions (linearity, unbiased errors, near-optimal gain), the observation error covariance can be estimated as:
 
-At each time step the Kalman filter performs:
+\[
+R \approx \mathbb{E}[ d^a_t (d^b_t)^T ]
+\]
 
-1. **Forecast**: predict state and uncertainty  
-2. **Innovation**  
-   d_b = y_t − H x_b  
-3. **Update**: combine model and data using Kalman gain  
-4. **Analysis residual**  
-   d_a = y_t − H x_a  
-
----
-
-## 5. Innovations vs Analysis Residuals
-
-| Residual | Process Noise | Observation Noise |
-|--------|---------------|------------------|
-| Innovation (d_b) | Large | Large |
-| Analysis residual (d_a) | Reduced | Large |
-
-This asymmetry enables separation of observation noise.
+This allows estimation of **correlated observation noise** without direct access to the true state.
 
 ---
 
-## 6. Desrosiers Method
+## Why Validation Is Necessary
 
-Core result:
+While the Desrosiers method can reveal rich error correlation structures, **estimating R does not guarantee that it improves model performance**. A structured covariance may:
+- Overfit finite-sample noise
+- Be inconsistent with the assumed state-space model
+- Degrade probabilistic performance when used in filtering
 
-R = E[ d_a · d_bᵀ ]
-
-In practice:
-
-R ≈ (1 / T) Σ d_a(t) d_b(t)ᵀ
-
-This allows estimation of observation error covariance **without knowing the true state**.
+Therefore, this project emphasizes **likelihood-based validation**, comparing different R models under the same Kalman filter to assess their statistical optimality.
 
 ---
 
-## 7. Implementation Summary
+## Repository Structure
 
-1. Load and clean yield curve data  
-2. Run Kalman filter  
-3. Store innovations and analysis residuals  
-4. Estimate R using Desrosiers diagnostics  
-5. Enforce positive semi-definiteness  
-6. Save covariance and correlation matrices  
-
-Outputs:
-- observation_error_covariance.csv  
-- observation_error_correlation.csv  
-
----
-
-## 8. Results Summary
-
-- Strong short-end correlations (e.g., 3M–6M ≈ 0.8)
-- Smooth decay of correlation with maturity separation
-- Weak short–long coupling
-- Positive variances across all maturities
-
----
-
-## 9. Assumptions & Limitations
-
-- Linear Gaussian dynamics
-- Approximate stationarity
-- Near-optimal Kalman gain
-- Diagnostic (not causal) estimation
-
----
-
-## 10. One-Sentence Summary
-
-This project estimates correlated observation noise in a Kalman-filtered yield curve using innovation-based diagnostics, revealing structured measurement uncertainty beyond diagonal assumptions.
+```text
+.
+├── static_desrosiers_error/
+│   ├── estimate_static_R.py
+│   └── README.md
+│
+├── likelihood/
+│   ├── likelihood_validation.py
+│   └── README.md
+│
+├── data/
+│   └── (input datasets)
+│
+└── README.md
