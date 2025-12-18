@@ -5,55 +5,58 @@
 
 ## Motivation
 
-Many estimation, filtering, and retrieval problems rely on accurate specification of the **observation error covariance matrix (R)**. In practice, R is often assumed to be diagonal for simplicity, implying independent measurement errors across channels or variables. However, this assumption is frequently violated in real-world systems where measurements may share common noise sources, calibration effects, or structural dependencies.
+Accurate specification of the **observation error covariance matrix (R)** is central to filtering, estimation, and retrieval problems. In practice, R is often assumed to be diagonal for convenience, implying independent measurement errors across variables or channels.
 
-The goal of this project is to:
-- **Estimate observation error covariance structures directly from data**, rather than assuming them a priori.
-- **Validate whether structured (correlated) error models are statistically justified**, using likelihood-based diagnostics.
-- Build a **methodologically sound foundation** for future applications in optimal estimation and machine-learning–based inference.
+This assumption is rarely realistic. Measurements frequently share common noise sources, interpolation artifacts, market microstructure effects, or calibration errors, all of which introduce **correlated observation noise**.
 
-This repository explores these questions using **Kalman filtering and innovation diagnostics**, with methods transferable across domains such as remote sensing, finance, and data assimilation.
+The purpose of this project is threefold:
+
+- Estimate observation error covariance structures **directly from data**, rather than imposing diagonal assumptions.
+- Test whether correlated error models are **statistically justified**, using likelihood-based validation.
+- Establish a clean and extensible framework suitable for downstream applications in filtering, optimal estimation, and learning-based models.
+
+Although the empirical application uses U.S. Treasury yield data, the methodology is general and applies equally to problems in finance, remote sensing, and data assimilation.
 
 ---
 
 ## The Desrosiers Innovation Diagnostic
 
-The core methodology implemented here is based on the **Desrosiers method** (Desrosiers & Ivanov, 2001; Desrosiers et al., 2005), an innovation-based diagnostic technique for estimating observation error covariance.
+The core methodology follows the **Desrosiers innovation diagnostic**, originally developed in the data assimilation literature.
 
-### Key idea
+### Core idea
 
-In a Kalman filter, two residuals are naturally produced at each time step:
+A Kalman filter naturally produces two residuals at each time step:
 
-- **Innovation**  
-  \[
-  d^b_t = y_t - H x^b_t
-  \]
-  (difference between observation and forecast)
+- **Innovation (forecast residual)**  
+  ```
+  dᵇₜ = yₜ − H xᵇₜ
+  ```
 
-- **Analysis residual**  
-  \[
-  d^a_t = y_t - H x^a_t
-  \]
-  (difference between observation and updated state)
+- **Analysis residual (post-update residual)**  
+  ```
+  dᵃₜ = yₜ − H xᵃₜ
+  ```
 
-Under standard Kalman filter assumptions (linearity, unbiased errors, near-optimal gain), the observation error covariance can be estimated as:
+Under standard Kalman filter assumptions (linearity, unbiased errors, and a near-optimal Kalman gain), these residuals satisfy:
 
-\[
-R = E[ d_a · d_bᵀ ]
-\]
+```
+R = E[dᵃ dᵇᵀ]
+```
 
-This allows estimation of **correlated observation noise** without direct access to the true state.
+In practice, the expectation is replaced by a time average. This provides an estimate of the **observation error covariance matrix**, including cross-correlations, without direct access to the true state.
 
 ---
 
 ## Why Validation Is Necessary
 
-While the Desrosiers method can reveal rich error correlation structures, **estimating R does not guarantee that it improves model performance**. A structured covariance may:
-- Overfit finite-sample noise
-- Be inconsistent with the assumed state-space model
-- Degrade probabilistic performance when used in filtering
+Estimating a structured covariance matrix does not guarantee improved model performance.
 
-Therefore, this project emphasizes **likelihood-based validation**, comparing different R models under the same Kalman filter to assess their statistical optimality.
+A correlated R may:
+- Capture finite-sample noise rather than true structure
+- Be inconsistent with the assumed state-space dynamics
+- Reduce probabilistic performance when used inside a filter
+
+For this reason, estimation and validation are treated as separate steps. After estimating R using Desrosiers diagnostics, I evaluate whether the resulting covariance improves model fit by comparing **innovation log-likelihoods** under different observation error models.
 
 ---
 
@@ -73,3 +76,13 @@ Therefore, this project emphasizes **likelihood-based validation**, comparing di
 │   └── yield-curve-rates-1990-2024.csv
 │
 └── README.md
+```
+
+---
+
+## References
+
+- Kalman, R. E. (1960). *A New Approach to Linear Filtering and Prediction Problems*. Journal of Basic Engineering.
+- Desroziers, G., & Ivanov, S. (2001). *Diagnosis and adaptive tuning of observation-error parameters in a variational assimilation*. Quarterly Journal of the Royal Meteorological Society.
+- Desroziers, G., Berre, L., Chapnik, B., & Poli, P. (2005). *Diagnosis of observation, background and analysis-error statistics in observation space*. Quarterly Journal of the Royal Meteorological Society.
+- Durbin, J., & Koopman, S. J. (2012). *Time Series Analysis by State Space Methods*. Oxford University Press.
