@@ -26,177 +26,111 @@ estimation code to enforce clean model validation.
 import numpy as np
 import pandas as pd
 
-# ---------------------------------------------------------
-# Utility functions
-# ---------------------------------------------------------
-
-def log_likelihood_gaussian(innovation, S):
-    """
-    Compute log-likelihood of a Gaussian innovation.
-
-    Parameters
-    ----------
-    innovation : ndarray (n,)
-        Innovation vector d_t^b
-    S : ndarray (n x n)
-        Innovation covariance matrix
-
-    Returns
-    -------
-    float
-        Log-likelihood contribution
-    """
-    n = innovation.shape[0]
-    sign, logdet = np.linalg.slogdet(S)
-
-    if sign <= 0:
-        raise ValueError("Innovation covariance not positive definite.")
-
-    quad = innovation.T @ np.linalg.solve(S, innovation)
-
-    return -0.5 * (logdet + quad + n * np.log(2 * np.pi))
+# ======================================================
+# Simple Gaussian log-likelihood
+# ======================================================
+def loglik_gaussian(d, S):
+    L = np.linalg.cholesky(S)          # ensures PD
+    v = np.linalg.solve(L, d)
+    logdet = 2 * np.sum(np.log(np.diag(L)))
+    n = len(d)
+    return -0.5 * (v @ v + logdet + n * np.log(2 * np.pi))
 
 
-# ---------------------------------------------------------
-# Kalman filter with likelihood accumulation
-# ---------------------------------------------------------
-
-def run_kalman_filter_with_likelihood(
-    observations,
-    F,
-    H,
-    Q,
-    R_model,
-    x0,
-    P0
-):
-    """
-    Run Kalman filter and accumulate innovation log-likelihood.
-
-    Parameters
-    ----------
-    observations : ndarray (T x n)
-    F : ndarray (n x n)
-    H : ndarray (n x n)
-    Q : ndarray (n x n)
-    R_model : callable
-        Function returning R_t given time index t
-    x0 : ndarray (n,)
-        Initial state
-    P0 : ndarray (n x n)
-        Initial covariance
-
-    Returns
-    -------
-    float
-        Total log-likelihood
-    """
-    T, n = observations.shape
-
+# ======================================================
+# Kalman filter with likelihood only
+# ======================================================
+def kalman_loglik(y, F, H, Q, R_model, x0, P0):
+    T, n = y.shape
     x = x0.copy()
     P = P0.copy()
-
     loglik = 0.0
 
     for t in range(T):
-
-        # ---- Forecast step ----
+        # Forecast
         x_b = F @ x
         P_b = F @ P @ F.T + Q
 
-        # ---- Innovation ----
-        y = observations[t]
-        d_b = y - H @ x_b
+        # Innovation
+        d = y[t] - H @ x_b
+        R = R_model(t)
+        S = H @ P_b @ H.T + R
 
-        R_t = R_model(t)
-        S = H @ P_b @ H.T + R_t
+        # Likelihood
+        loglik += loglik_gaussian(d, S)
 
-        # ---- Likelihood contribution ----
-        loglik += log_likelihood_gaussian(d_b, S)
-
-        # ---- Kalman update ----
-        K = P_b @ H.T @ np.linalg.inv(S)
-        x = x_b + K @ d_b
+        # Update
+        K = P_b @ H.T @ np.linalg.solve(S, np.eye(n))
+        x = x_b + K @ d
         P = (np.eye(n) - K @ H) @ P_b
 
     return loglik
 
 
-# ---------------------------------------------------------
-# R model builders
-# ---------------------------------------------------------
-
-def static_R_model(R):
-    """
-    Return a callable static R model.
-    """
-    def R_t(_):
-        return R
-    return R_t
+# ======================================================
+# Nested R model (IMPORTANT)
+# ======================================================
+def nested_R_model(R_full, alpha):
+    R_diag = np.diag(np.diag(R_full))
+    return lambda _: alpha * R_full + (1 - alpha) * R_diag
 
 
-# ---------------------------------------------------------
-# Main execution
-# ---------------------------------------------------------
-
+# ======================================================
+# Main
+# ======================================================
 def main():
 
     # ---- Load data ----
     df = pd.read_csv("data/yield-curve-rates-1990-2024.csv", index_col=0)
     df = df.dropna()
-    
-    observations = df.values
-
-    T, n = observations.shape
+    y = df.values
+    T, n = y.shape
 
     # ---- Model setup ----
-    F = np.eye(n)              # Random walk
+    F = np.eye(n)
     H = np.eye(n)
-    Q = 1e-6 * np.eye(n)       # Small process noise
+    Q = 1e-6 * np.eye(n)
 
-    x0 = observations[0]
+    x0 = y[0]
     P0 = np.eye(n)
 
-    # ---- Load R models ----
-    R_diag = np.diag(np.var(observations, axis=0))
-    R_desrosiers = pd.read_csv(
+    # ---- Load Desrosiers R ----
+    R_des = pd.read_csv(
         "output/static/observation_error_covariance.csv",
         index_col=0
     ).values
 
-    R_models = {
-        "Diagonal R": static_R_model(R_diag),
-        "Static Desrosiers R": static_R_model(R_desrosiers)
-    }
+    # ---- Simple safety check ----
+    assert np.all(np.linalg.eigvalsh(R_des) > 0), "R_des not PD!"
 
-    # ---- Run comparison ----
-    print("\nModel comparison (innovation log-likelihood):\n")
+    # ---- Likelihood comparison ----
+    print("\nLikelihood comparison:\n")
 
+    alphas = np.linspace(0, 1, 11)
     results = {}
 
-    for name, R_model in R_models.items():
-        ll = run_kalman_filter_with_likelihood(
-            observations,
-            F,
-            H,
-            Q,
-            R_model,
-            x0,
-            P0
+    for a in alphas:
+        ll = kalman_loglik(
+            y, F, H, Q,
+            nested_R_model(R_des, a),
+            x0, P0
         )
-        results[name] = ll
-        print(f"{name:<25s}: {ll: .2f}")
+        results[a] = ll
+        print(f"alpha = {a:.1f}   loglik = {ll:.2f}")
 
-    # ---- Relative improvement ----
-    if len(results) >= 2:
-        keys = list(results.keys())
-        improvement = results[keys[1]] - results[keys[0]]
+    best_alpha = max(results, key=results.get)
 
-        print("\nImprovement:")
-        print(f"{keys[1]} vs {keys[0]}: {improvement: .2f}")
+    print("\nBest alpha:")
+    print(f"alpha = {best_alpha:.1f}")
+
+    if best_alpha > 0:
+        print("✔ Correlated observation errors improve the model.")
+    else:
+        print("✔ Diagonal observation errors are sufficient.")
 
     print("\nDone.")
 
 
 if __name__ == "__main__":
     main()
+

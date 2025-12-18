@@ -228,8 +228,6 @@ assumptions commonly used in baseline models.
 ==========================================================
 """
 
-
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -250,9 +248,14 @@ def load_yield_data(csv_path):
 
 
 # ======================================================
-# 2. Kalman filter with residual storage
+# 2. Kalman filter with residual storage (steady-state)
 # ======================================================
-def run_kalman_filter(y, Q_scale=1e-5, R_scale=1e-4):
+def run_kalman_filter(
+    y,
+    Q_scale=1e-6,
+    R_scale=1e-4,
+    burn_in=50
+):
     T, n = y.shape
 
     F = np.eye(n)
@@ -260,114 +263,105 @@ def run_kalman_filter(y, Q_scale=1e-5, R_scale=1e-4):
     Q = Q_scale * np.eye(n)
     R = R_scale * np.eye(n)
 
-    x_a = y[0].copy()
-    P_a = np.eye(n)
+    x = y[0].copy()
+    P = np.eye(n)
 
     innovations = []
     analysis_residuals = []
 
     for t in range(1, T):
-        # Forecast
-        x_b = F @ x_a
-        P_b = F @ P_a @ F.T + Q
 
-        # Innovation
+        # ---- Forecast ----
+        x_b = F @ x
+        P_b = F @ P @ F.T + Q
+
+        # ---- Innovation ----
         d_b = y[t] - H @ x_b
         S = H @ P_b @ H.T + R
-        K = P_b @ H.T @ np.linalg.inv(S)
+        K = P_b @ H.T @ np.linalg.solve(S, np.eye(n))
 
-        # Analysis
-        x_a = x_b + K @ d_b
-        P_a = (np.eye(n) - K @ H) @ P_b
+        # ---- Analysis ----
+        x = x_b + K @ d_b
+        P = (np.eye(n) - K @ H) @ P_b
 
-        d_a = y[t] - H @ x_a
+        d_a = y[t] - H @ x
 
-        innovations.append(d_b)
-        analysis_residuals.append(d_a)
+        if t > burn_in:
+            innovations.append(d_b)
+            analysis_residuals.append(d_a)
 
     return np.array(innovations), np.array(analysis_residuals)
 
 
 # ======================================================
-# 3. Desrosiers covariance estimator
+# 3. Desrosiers covariance estimator (unbiased)
 # ======================================================
 def desrosiers_covariance(innovations, analysis_residuals):
-    T = len(innovations)
-    R = sum(
-        np.outer(analysis_residuals[t], innovations[t])
-        for t in range(T)
-    ) / T
+    T = innovations.shape[0]
+    R = np.zeros((innovations.shape[1], innovations.shape[1]))
 
+    for t in range(T):
+        R += np.outer(analysis_residuals[t], innovations[t])
+
+    R /= T
     return 0.5 * (R + R.T)
 
 
 # ======================================================
-# 4. Enforce positive semi-definiteness
+# 4. Enforce positive definiteness
 # ======================================================
-def make_psd(matrix, eps=1e-6):
+def make_pd(matrix, eps=1e-8):
     eigvals, eigvecs = np.linalg.eigh(matrix)
-    eigvals[eigvals < eps] = eps
+    eigvals = np.maximum(eigvals, eps)
     return eigvecs @ np.diag(eigvals) @ eigvecs.T
 
 
 # ======================================================
-# 5. Print, save covariance and correlation
+# 5. Save covariance and correlation
 # ======================================================
-def print_and_save(R, maturities):
+def save_results(R, maturities):
     cov_df = pd.DataFrame(R, index=maturities, columns=maturities)
 
     D = np.sqrt(np.diag(R))
     corr = R / np.outer(D, D)
     corr_df = pd.DataFrame(corr, index=maturities, columns=maturities)
 
-    print("\n===== OBSERVATION ERROR COVARIANCE =====")
-    print(cov_df)
+    cov_df.to_csv("../output/static/observation_error_covariance.csv")
+    corr_df.to_csv("../output/static/observation_error_correlation.csv")
 
-    print("\n===== OBSERVATION ERROR CORRELATION =====")
-    print(corr_df)
-
-    cov_df.to_csv("C:/Users/User/Downloads/observation_error_covariance.csv")
-    corr_df.to_csv("C:/Users/User/Downloads/observation_error_correlation.csv")
-
-    print("\nSaved files:")
+    print("\nSaved:")
     print(" - observation_error_covariance.csv")
     print(" - observation_error_correlation.csv")
-    
-    heatmap_plot(corr_df)
-    
-def heatmap_plot(corr_df):
-    # ------------------------------------------------------
-    # Heatmap: Observation Error Correlation
-    # ------------------------------------------------------
-    plt.figure(figsize=(10, 8))
-    plt.imshow(corr_df.values, aspect="auto")
-    plt.colorbar(label="Correlation")
 
+    plt.figure(figsize=(10, 8))
+    plt.imshow(corr, aspect="auto")
+    plt.colorbar(label="Correlation")
     plt.xticks(range(len(maturities)), maturities, rotation=90)
     plt.yticks(range(len(maturities)), maturities)
-
-    plt.title("Estimated Observation Error Correlation (Desrosiers)")
+    plt.title("Desrosiers Observation Error Correlation")
     plt.tight_layout()
     plt.show()
 
 
 # ======================================================
-# 6. Main execution
+# 6. Main
 # ======================================================
 if __name__ == "__main__":
 
-    y, maturities = load_yield_data("C:/Users/User/Downloads/yield-curve-rates-1990-2024.csv")
+    y, maturities = load_yield_data(
+        "../data/yield-curve-rates-1990-2024.csv"
+    )
 
-    innovations, analysis_residuals = run_kalman_filter(y)
+    innovations, analysis_residuals = run_kalman_filter(
+        y,
+        Q_scale=1e-6,
+        R_scale=1e-4,
+        burn_in=50
+    )
 
     R_est = desrosiers_covariance(innovations, analysis_residuals)
-    R_psd = make_psd(R_est)
+    R_pd = make_pd(R_est)
 
-    print_and_save(R_psd, maturities)
+    save_results(R_pd, maturities)
 
     print("\nDone.")
-
-    
-
-
-
