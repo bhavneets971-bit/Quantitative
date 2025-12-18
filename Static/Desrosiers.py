@@ -239,12 +239,18 @@ def load_yield_data(csv_path):
     df = pd.read_csv(csv_path)
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.sort_values("Date")
+    
+    # SAME maturity subset as rolling code
+    maturities = [
+        "3 Mo", "6 Mo", "1 Yr",
+        "2 Yr", "5 Yr", "10 Yr", "30 Yr"
+    ]
 
-    maturity_cols = [c for c in df.columns if c != "Date"]
-    df = df[["Date"] + maturity_cols].dropna()
+    # Drop rows only where these maturities are missing
+    df = df[["Date"] + maturities].dropna(subset=maturities)
 
-    y = df[maturity_cols].values
-    return y, maturity_cols
+    y = df[maturities].values
+    return y, maturities
 
 
 # ======================================================
@@ -326,8 +332,8 @@ def save_results(R, maturities):
     corr = R / np.outer(D, D)
     corr_df = pd.DataFrame(corr, index=maturities, columns=maturities)
 
-    cov_df.to_csv("../output/static/observation_error_covariance.csv")
-    corr_df.to_csv("../output/static/observation_error_correlation.csv")
+    cov_df.to_csv("output/static/observation_error_covariance.csv")
+    corr_df.to_csv("output/static/observation_error_correlation.csv")
 
     print("\nSaved:")
     print(" - observation_error_covariance.csv")
@@ -349,7 +355,7 @@ def save_results(R, maturities):
 if __name__ == "__main__":
 
     y, maturities = load_yield_data(
-        "../data/yield-curve-rates-1990-2024.csv"
+        "data/yield-curve-rates-1990-2024.csv"
     )
 
     innovations, analysis_residuals = run_kalman_filter(

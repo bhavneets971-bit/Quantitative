@@ -46,7 +46,7 @@ def kalman_loglik(y, F, H, Q, R_model, x0, P0):
     P = P0.copy()
     loglik = 0.0
 
-    for t in range(T):
+    for t in range(1, T):
         # Forecast
         x_b = F @ x
         P_b = F @ P @ F.T + Q
@@ -81,9 +81,20 @@ def nested_R_model(R_full, alpha):
 def main():
 
     # ---- Load data ----
-    df = pd.read_csv("data/yield-curve-rates-1990-2024.csv", index_col=0)
-    df = df.dropna()
-    y = df.values
+    df = pd.read_csv("data/yield-curve-rates-1990-2024.csv")
+    df["Date"] = pd.to_datetime(df["Date"], format="mixed")
+    df = df.sort_values("Date")
+
+    # ---- Same stable maturities as Desrosiers ----
+    maturities = [
+        "3 Mo", "6 Mo", "1 Yr",
+        "2 Yr", "5 Yr", "10 Yr", "30 Yr"
+    ]
+
+    # Drop rows only where these maturities are missing
+    df = df[["Date"] + maturities].dropna(subset=maturities)
+    
+    y = df[maturities].values
     T, n = y.shape
 
     # ---- Model setup ----
