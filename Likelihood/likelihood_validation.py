@@ -3,34 +3,22 @@
 LIKELIHOOD-BASED VALIDATION OF OBSERVATION ERROR MODELS
 ==========================================================
 
-This script compares different observation error covariance
-models (R) using innovation log-likelihood from a Kalman
-filter.
+Diagonal, static full, and rolling full observation
+error covariance models compared via Kalman filter
+innovation log-likelihood.
 
-Purpose:
----------
-To objectively validate whether a structured observation
-error covariance (e.g. Desrosiers-estimated R) improves
-model performance relative to a diagonal baseline.
-
-Design:
---------
-- R is treated as a callable: R_t = R_model(t)
-- Supports static, rolling-window, and future ANN-based R
-- Uses innovation likelihood (Gaussian assumption)
-
-This script is intentionally separate from covariance
-estimation code to enforce clean model validation.
+All models are evaluated on the identical sample.
 """
 
 import numpy as np
 import pandas as pd
 
+
 # ======================================================
-# Simple Gaussian log-likelihood
+# Gaussian log-likelihood
 # ======================================================
 def loglik_gaussian(d, S):
-    L = np.linalg.cholesky(S)          # ensures PD
+    L = np.linalg.cholesky(S)
     v = np.linalg.solve(L, d)
     logdet = 2 * np.sum(np.log(np.diag(L)))
     n = len(d)
@@ -38,13 +26,13 @@ def loglik_gaussian(d, S):
 
 
 # ======================================================
-# Kalman filter with likelihood only
+# Kalman filter likelihood
 # ======================================================
 def kalman_loglik(y, F, H, Q, R_model, x0, P0):
     T, n = y.shape
     x = x0.copy()
     P = P0.copy()
-    loglik = 0.0
+    ll = 0.0
 
     for t in range(1, T):
         # Forecast
@@ -54,25 +42,56 @@ def kalman_loglik(y, F, H, Q, R_model, x0, P0):
         # Innovation
         d = y[t] - H @ x_b
         R = R_model(t)
-        S = H @ P_b @ H.T + R
 
-        # Likelihood
-        loglik += loglik_gaussian(d, S)
+        S = H @ P_b @ H.T + R
+        ll += loglik_gaussian(d, S)
 
         # Update
         K = P_b @ H.T @ np.linalg.solve(S, np.eye(n))
         x = x_b + K @ d
         P = (np.eye(n) - K @ H) @ P_b
 
-    return loglik
+    return ll
 
 
 # ======================================================
-# Nested R model (IMPORTANT)
+# R model factories
 # ======================================================
-def nested_R_model(R_full, alpha):
+def diagonal_R(R_full):
     R_diag = np.diag(np.diag(R_full))
-    return lambda _: alpha * R_full + (1 - alpha) * R_diag
+    return lambda _: R_diag
+
+
+def static_R(R_full):
+    return lambda _: R_full
+
+
+def rolling_R_model(dates, R_by_date):
+    def R_t(t):
+        return R_by_date[pd.Timestamp(dates[t])]
+    return R_t
+
+
+# ======================================================
+# Load rolling R matrices
+# ======================================================
+def load_rolling_R(csv_path, maturities):
+    df = pd.read_csv(csv_path, parse_dates=["window_end_date"])
+    R_by_date = {}
+
+    for date, g in df.groupby("window_end_date"):
+        mat = (
+            g.pivot(
+                index="maturity_i",
+                columns="maturity_j",
+                values="covariance"
+            )
+            .loc[maturities, maturities]
+            .values
+        )
+        R_by_date[pd.Timestamp(date)] = mat
+
+    return R_by_date
 
 
 # ======================================================
@@ -80,24 +99,31 @@ def nested_R_model(R_full, alpha):
 # ======================================================
 def main():
 
-    # ---- Load data ----
+    # ---- Load yield data ----
     df = pd.read_csv("data/yield-curve-rates-1990-2024.csv")
     df["Date"] = pd.to_datetime(df["Date"], format="mixed")
     df = df.sort_values("Date")
 
-    # ---- Same stable maturities as Desrosiers ----
     maturities = [
         "3 Mo", "6 Mo", "1 Yr",
         "2 Yr", "5 Yr", "10 Yr", "30 Yr"
     ]
 
-    # Drop rows only where these maturities are missing
     df = df[["Date"] + maturities].dropna(subset=maturities)
-    
-    y = df[maturities].values
-    T, n = y.shape
 
-    # ---- Model setup ----
+    # ---- Load rolling R ----
+    R_rolling = load_rolling_R("output/rolling/rolling_R_all.csv", maturities)
+
+    # ---- Force identical evaluation dates ----
+    df = df[df["Date"].isin(R_rolling.keys())].copy()
+    df = df.sort_values("Date")
+
+    y = df[maturities].values
+    dates = df["Date"].values
+
+    n = y.shape[1]
+
+    # ---- Model parameters ----
     F = np.eye(n)
     H = np.eye(n)
     Q = 1e-6 * np.eye(n)
@@ -105,43 +131,43 @@ def main():
     x0 = y[0]
     P0 = np.eye(n)
 
-    # ---- Load Desrosiers R ----
-    R_des = pd.read_csv(
+    # ---- Load static R ----
+    R_static = pd.read_csv(
         "output/static/observation_error_covariance.csv",
         index_col=0
-    ).values
+    ).loc[maturities, maturities].values
 
-    # ---- Simple safety check ----
-    assert np.all(np.linalg.eigvalsh(R_des) > 0), "R_des not PD!"
+    assert np.all(np.linalg.eigvalsh(R_static) > 0)
 
-    # ---- Likelihood comparison ----
-    print("\nLikelihood comparison:\n")
+    # ==================================================
+    # Likelihood comparison
+    # ==================================================
+    print("\nLikelihood comparison (common sample):\n")
 
-    alphas = np.linspace(0, 1, 11)
-    results = {}
+    ll_diag = kalman_loglik(
+        y, F, H, Q,
+        diagonal_R(R_static),
+        x0, P0
+    )
 
-    for a in alphas:
-        ll = kalman_loglik(
-            y, F, H, Q,
-            nested_R_model(R_des, a),
-            x0, P0
-        )
-        results[a] = ll
-        print(f"alpha = {a:.1f}   loglik = {ll:.2f}")
+    ll_static = kalman_loglik(
+        y, F, H, Q,
+        static_R(R_static),
+        x0, P0
+    )
 
-    best_alpha = max(results, key=results.get)
+    ll_rolling = kalman_loglik(
+        y, F, H, Q,
+        rolling_R_model(dates, R_rolling),
+        x0, P0
+    )
 
-    print("\nBest alpha:")
-    print(f"alpha = {best_alpha:.1f}")
-
-    if best_alpha > 0:
-        print("✔ Correlated observation errors improve the model.")
-    else:
-        print("✔ Diagonal observation errors are sufficient.")
+    print(f"Diagonal R      loglik = {ll_diag:.2f}")
+    print(f"Static full R   loglik = {ll_static:.2f}")
+    print(f"Rolling full R  loglik = {ll_rolling:.2f}")
 
     print("\nDone.")
 
 
 if __name__ == "__main__":
     main()
-

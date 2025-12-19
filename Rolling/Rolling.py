@@ -49,7 +49,7 @@ def load_yield_data(csv_path):
 # ======================================================
 # 2. Kalman filter (random-walk state)
 # ======================================================
-def run_kalman_filter(y, Q_scale=1e-6, R_scale=1e-4):
+def run_kalman_filter(y, Q_scale=1e-4, R_scale=1e-4):
     T, n = y.shape
 
     F = np.eye(n)
@@ -164,7 +164,7 @@ if __name__ == "__main__":
                     "covariance": R_t[i, j]
                 })
 
-    pd.DataFrame(rows).to_csv("rolling_R_all.csv", index=False)
+    pd.DataFrame(rows).to_csv("output/rolling/rolling_R_all.csv", index=False)
 
     print("Saved rolling_R_all.csv")
     print("Done.")

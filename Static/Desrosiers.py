@@ -258,7 +258,7 @@ def load_yield_data(csv_path):
 # ======================================================
 def run_kalman_filter(
     y,
-    Q_scale=1e-6,
+    Q_scale=1e-4,
     R_scale=1e-4,
     burn_in=50
 ):
@@ -360,7 +360,7 @@ if __name__ == "__main__":
 
     innovations, analysis_residuals = run_kalman_filter(
         y,
-        Q_scale=1e-6,
+        Q_scale=1e-4,
         R_scale=1e-4,
         burn_in=50
     )
