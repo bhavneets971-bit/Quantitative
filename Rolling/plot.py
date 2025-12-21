@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 # ======================================================
 # Configuration
 # ======================================================
-CSV_PATH = "rolling_R_all.csv"
+CSV_PATH = "output/rolling/rolling_R_all.csv"
 OUTPUT_DIR = "Rolling/plots"
 OUTPUT_FILE = "rolling_variances_by_year.png"
 

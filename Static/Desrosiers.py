@@ -231,6 +231,9 @@ assumptions commonly used in baseline models.
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import os
+
+os.makedirs("Static/plots", exist_ok=True)
 
 # ======================================================
 # 1. Load and prepare data
@@ -239,16 +242,13 @@ def load_yield_data(csv_path):
     df = pd.read_csv(csv_path)
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.sort_values("Date")
-    
-    # SAME maturity subset as rolling code
+
     maturities = [
         "3 Mo", "6 Mo", "1 Yr",
         "2 Yr", "5 Yr", "10 Yr", "30 Yr"
     ]
 
-    # Drop rows only where these maturities are missing
     df = df[["Date"] + maturities].dropna(subset=maturities)
-
     y = df[maturities].values
     return y, maturities
 
@@ -258,16 +258,26 @@ def load_yield_data(csv_path):
 # ======================================================
 def run_kalman_filter(
     y,
-    Q_scale=1e-4,
-    R_scale=1e-4,
+    Q_scale=0.2,     # ← tuned elsewhere via whitening
+    R_fraction=0.1,  # ← principled initial R
     burn_in=50
 ):
     T, n = y.shape
 
     F = np.eye(n)
     H = np.eye(n)
-    Q = Q_scale * np.eye(n)
-    R = R_scale * np.eye(n)
+
+    # ==================================================
+    # PRINCIPLED Q: empirical yield change covariance
+    # ==================================================
+    dy = np.diff(y, axis=0)
+    Q_base = np.cov(dy.T)
+    Q = Q_scale * Q_base
+
+    # ==================================================
+    # PRINCIPLED INITIAL R: fraction of one-step variance
+    # ==================================================
+    R = np.diag(R_fraction * np.diag(Q_base))
 
     x = y[0].copy()
     P = np.eye(n)
@@ -289,7 +299,6 @@ def run_kalman_filter(
         # ---- Analysis ----
         x = x_b + K @ d_b
         P = (np.eye(n) - K @ H) @ P_b
-
         d_a = y[t] - H @ x
 
         if t > burn_in:
@@ -300,7 +309,7 @@ def run_kalman_filter(
 
 
 # ======================================================
-# 3. Desrosiers covariance estimator (unbiased)
+# 3. Desroziers covariance estimator
 # ======================================================
 def desrosiers_covariance(innovations, analysis_residuals):
     T = innovations.shape[0]
@@ -344,9 +353,11 @@ def save_results(R, maturities):
     plt.colorbar(label="Correlation")
     plt.xticks(range(len(maturities)), maturities, rotation=90)
     plt.yticks(range(len(maturities)), maturities)
-    plt.title("Desrosiers Observation Error Correlation")
+    plt.title("Desroziers Observation Error Correlation")
     plt.tight_layout()
-    plt.show()
+    
+    plt.savefig("Static/plots/static_correlation.png")
+    plt.close()
 
 
 # ======================================================
@@ -360,8 +371,8 @@ if __name__ == "__main__":
 
     innovations, analysis_residuals = run_kalman_filter(
         y,
-        Q_scale=1e-4,
-        R_scale=1e-4,
+        Q_scale=0.2,     # ← from Q diagnostics
+        R_fraction=0.1,  # ← principled initial R
         burn_in=50
     )
 

@@ -25,14 +25,13 @@ import pandas as pd
 
 
 # ======================================================
-# 1. Load yield curve data (CORRECTED)
+# 1. Load yield curve data
 # ======================================================
 def load_yield_data(csv_path):
     df = pd.read_csv(csv_path)
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.sort_values("Date")
 
-    # Stable maturities available since early 1990s
     maturities = [
         "3 Mo", "6 Mo", "1 Yr",
         "2 Yr", "5 Yr", "10 Yr", "30 Yr"
@@ -47,15 +46,29 @@ def load_yield_data(csv_path):
 
 
 # ======================================================
-# 2. Kalman filter (random-walk state)
+# 2. Kalman filter (random-walk state, principled Q & R)
 # ======================================================
-def run_kalman_filter(y, Q_scale=1e-4, R_scale=1e-4):
+def run_kalman_filter(
+    y,
+    Q_scale=0.2,     # ← from Q diagnostics
+    R_fraction=0.1   # ← principled initial R
+):
     T, n = y.shape
 
     F = np.eye(n)
     H = np.eye(n)
-    Q = Q_scale * np.eye(n)
-    R = R_scale * np.eye(n)
+
+    # ==================================================
+    # Empirical Q anchor
+    # ==================================================
+    dy = np.diff(y, axis=0)
+    Q_base = np.cov(dy.T)
+    Q = Q_scale * Q_base
+
+    # ==================================================
+    # Principled initial R
+    # ==================================================
+    R = np.diag(R_fraction * np.diag(Q_base))
 
     x = y[0].copy()
     P = np.eye(n)
@@ -95,7 +108,7 @@ def make_psd(matrix, eps=1e-6):
 
 
 # ======================================================
-# 4. Rolling Desrosiers estimator (CORRECTED)
+# 4. Rolling Desroziers estimator
 # ======================================================
 def rolling_desrosiers_R(innovations, analysis_residuals, dates, window):
     T, n = innovations.shape
@@ -129,13 +142,17 @@ def rolling_desrosiers_R(innovations, analysis_residuals, dates, window):
 # ======================================================
 if __name__ == "__main__":
 
-    WINDOW_LENGTH = 252  # ~1 trading year (daily data)
+    WINDOW_LENGTH = 252  # ~1 trading year
 
     y, dates, maturities = load_yield_data(
         "data/yield-curve-rates-1990-2024.csv"
     )
 
-    innovations, analysis_residuals = run_kalman_filter(y)
+    innovations, analysis_residuals = run_kalman_filter(
+        y,
+        Q_scale=0.2,     # ← use value validated by whitening
+        R_fraction=0.1   # ← principled initial R
+    )
 
     R_rolling, meta = rolling_desrosiers_R(
         innovations,
@@ -164,7 +181,10 @@ if __name__ == "__main__":
                     "covariance": R_t[i, j]
                 })
 
-    pd.DataFrame(rows).to_csv("output/rolling/rolling_R_all.csv", index=False)
+    pd.DataFrame(rows).to_csv(
+        "output/rolling/rolling_R_all.csv",
+        index=False
+    )
 
     print("Saved rolling_R_all.csv")
     print("Done.")

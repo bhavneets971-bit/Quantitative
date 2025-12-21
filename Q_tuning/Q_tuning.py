@@ -80,17 +80,22 @@ def main():
     dy = np.diff(y, axis=0)
     Q_base = np.cov(dy.T)
 
-    # ---- Load static R ----
-    R = pd.read_csv(
-        "output/static/observation_error_covariance.csv",
-        index_col=0
-    ).values
+    # ==================================================
+    # PRINCIPLED INITIAL R
+    # ==================================================
+    # R explains only obvious measurement noise
+    # Set as a small fraction of one-step yield variance
+    alpha_R = 0.1  # 10% is a good default
+    R = np.diag(alpha_R * np.diag(Q_base))
 
+    print(R)
+    
     # ---- Q scale grid ----
     Q_scales = [0.1, 0.2, 0.25, 0.3]
 
     print("\nQ diagnostics:\n")
     print("Expected ||z|| ≈ sqrt(n) ≈", np.sqrt(n))
+    print(f"Initial R scale = {alpha_R:.0%} of diag(Q_base)")
     print("")
 
     for scale in Q_scales:
@@ -98,7 +103,7 @@ def main():
 
         z_mean, z_std, P_trace = kalman_q_diagnostics(y, Q, R)
 
-        print(f"Q scale = {scale:.0e}")
+        print(f"Q scale = {scale:.2f}")
         print(f"  mean ||whitened z|| : {z_mean:.2f}")
         print(f"  std  ||whitened z|| : {z_std:.2f}")
         print(f"  mean trace(P)      : {P_trace:.4e}")

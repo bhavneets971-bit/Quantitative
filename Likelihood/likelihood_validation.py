@@ -42,8 +42,8 @@ def kalman_loglik(y, F, H, Q, R_model, x0, P0):
         # Innovation
         d = y[t] - H @ x_b
         R = R_model(t)
-
         S = H @ P_b @ H.T + R
+
         ll += loglik_gaussian(d, S)
 
         # Update
@@ -111,8 +111,20 @@ def main():
 
     df = df[["Date"] + maturities].dropna(subset=maturities)
 
+    # ---- Compute empirical Q anchor ----
+    y_full = df[maturities].values
+    dy = np.diff(y_full, axis=0)
+    Q_base = np.cov(dy.T)
+
+    # ---- Use validated Q scale ----
+    Q_scale = 0.2   # ← must match earlier diagnostics
+    Q = Q_scale * Q_base
+
     # ---- Load rolling R ----
-    R_rolling = load_rolling_R("output/rolling/rolling_R_all.csv", maturities)
+    R_rolling = load_rolling_R(
+        "output/rolling/rolling_R_all.csv",
+        maturities
+    )
 
     # ---- Force identical evaluation dates ----
     df = df[df["Date"].isin(R_rolling.keys())].copy()
@@ -120,13 +132,11 @@ def main():
 
     y = df[maturities].values
     dates = df["Date"].values
-
     n = y.shape[1]
 
-    # ---- Model parameters ----
+    # ---- Model matrices ----
     F = np.eye(n)
     H = np.eye(n)
-    Q = 1e-6 * np.eye(n)
 
     x0 = y[0]
     P0 = np.eye(n)
