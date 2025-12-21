@@ -1,8 +1,9 @@
 {
-  "evaluation": "out_of_sample",
-  "train_end_date": "2010-12-31",
+  "sample_type": "out_of_sample",
+  "train_end_date": "2014-12-31",
   "Q_scale": 0.2,
-  "n_test_obs": 3501,
+  "n_test_obs": 2500,
+  "n_maturities": 7,
   "models_compared": [
     "diagonal",
     "static_full",

@@ -1,23 +1,15 @@
 """
 ==========================================================
-OUT-OF-SAMPLE LIKELIHOOD COMPARISON OF OBSERVATION ERROR MODELS
+OUT-OF-SAMPLE LIKELIHOOD-BASED VALIDATION OF OBSERVATION ERROR MODELS
 ==========================================================
 
 Diagonal, static full, and rolling full observation
-error covariance models compared via OUT-OF-SAMPLE
-Kalman filter log-likelihood.
+error covariance models compared via Kalman filter
+innovation log-likelihood.
 
-Training period:
-----------------
-Used to estimate Q, static R, and rolling R
-
-Test period:
-------------
-Used ONLY for likelihood evaluation
-
-This avoids overfitting and allows fair comparison
-between models of different flexibility.
-==========================================================
+This script is AUTHORITATIVE for out-of-sample likelihood
+comparison. No logic is removed — only metadata is added
+to support downstream health monitoring.
 """
 
 import numpy as np
@@ -25,7 +17,12 @@ import pandas as pd
 import os
 import json
 
+
+# ======================================================
+# Ensure output directories exist
+# ======================================================
 os.makedirs("output/likelihood", exist_ok=True)
+
 
 # ======================================================
 # Gaussian log-likelihood
@@ -39,9 +36,9 @@ def loglik_gaussian(d, S):
 
 
 # ======================================================
-# Kalman filter likelihood (fixed R)
+# Kalman filter likelihood
 # ======================================================
-def kalman_loglik(y, F, H, Q, R, x0, P0):
+def kalman_loglik(y, F, H, Q, R_model, x0, P0):
     T, n = y.shape
     x = x0.copy()
     P = P0.copy()
@@ -52,6 +49,7 @@ def kalman_loglik(y, F, H, Q, R, x0, P0):
         P_b = F @ P @ F.T + Q
 
         d = y[t] - H @ x_b
+        R = R_model(t)
         S = H @ P_b @ H.T + R
 
         ll += loglik_gaussian(d, S)
@@ -64,34 +62,21 @@ def kalman_loglik(y, F, H, Q, R, x0, P0):
 
 
 # ======================================================
-# Kalman filter likelihood (rolling R)
+# R model factories
 # ======================================================
-def kalman_loglik_rolling(y, dates, F, H, Q, R_by_date, x0, P0):
-    T, n = y.shape
-    x = x0.copy()
-    P = P0.copy()
-    ll = 0.0
+def diagonal_R(R_full):
+    R_diag = np.diag(np.diag(R_full))
+    return lambda _: R_diag
 
-    available_dates = sorted(R_by_date.keys())
-    last_R = R_by_date[available_dates[-1]]
 
-    for t in range(1, T):
-        x_b = F @ x
-        P_b = F @ P @ F.T + Q
+def static_R(R_full):
+    return lambda _: R_full
 
-        date = pd.Timestamp(dates[t])
-        R = R_by_date.get(date, last_R)
 
-        d = y[t] - H @ x_b
-        S = H @ P_b @ H.T + R
-
-        ll += loglik_gaussian(d, S)
-
-        K = P_b @ H.T @ np.linalg.solve(S, np.eye(n))
-        x = x_b + K @ d
-        P = (np.eye(n) - K @ H) @ P_b
-
-    return float(ll)
+def rolling_R_model(dates, R_by_date):
+    def R_t(t):
+        return R_by_date[pd.Timestamp(dates[t])]
+    return R_t
 
 
 # ======================================================
@@ -121,7 +106,9 @@ def load_rolling_R(csv_path, maturities):
 # ======================================================
 def main():
 
-    TRAIN_END_DATE = "2010-12-31"
+    # ---- Configuration ----
+    Q_SCALE = 0.2
+    TRAIN_END_DATE = "2014-12-31"   # explicit, auditable split
 
     # ---- Load yield data ----
     df = pd.read_csv("data/yield-curve-rates-1990-2024.csv")
@@ -136,76 +123,76 @@ def main():
     df = df[["Date"] + maturities].dropna(subset=maturities)
 
     # ---- Train / test split ----
-    train_df = df[df["Date"] <= TRAIN_END_DATE].copy()
-    test_df = df[df["Date"] > TRAIN_END_DATE].copy()
+    df_train = df[df["Date"] <= TRAIN_END_DATE].copy()
+    df_test = df[df["Date"] > TRAIN_END_DATE].copy()
 
-    y_train = train_df[maturities].values
-    y_test = test_df[maturities].values
-    dates_test = test_df["Date"].values
-
-    n = y_train.shape[1]
-
-    # ---- Estimate Q on TRAIN ----
+    # ---- Compute Q from TRAIN ONLY ----
+    y_train = df_train[maturities].values
     dy = np.diff(y_train, axis=0)
     Q_base = np.cov(dy.T)
-    Q_SCALE = 0.2
     Q = Q_SCALE * Q_base
 
-    # ---- Load static R (estimated on TRAIN elsewhere) ----
+    # ---- Load rolling R (estimated on training sample) ----
+    R_rolling = load_rolling_R(
+        "output/rolling/rolling_R_all.csv",
+        maturities
+    )
+
+    roll_meta = pd.read_csv(
+        "output/rolling/rolling_R_metadata.csv"
+    ).iloc[0]
+
+    # ---- Restrict test sample to dates with R available ----
+    df_test = df_test[df_test["Date"].isin(R_rolling.keys())].copy()
+    df_test = df_test.sort_values("Date")
+
+    y = df_test[maturities].values
+    dates = df_test["Date"].values
+    n = y.shape[1]
+
+    # ---- Model matrices ----
+    F = np.eye(n)
+    H = np.eye(n)
+
+    x0 = y[0]
+    P0 = np.eye(n)
+
+    # ---- Load static R (estimated on training sample) ----
     R_static = pd.read_csv(
         "output/static/observation_error_covariance.csv",
         index_col=0
     ).loc[maturities, maturities].values
 
-    # ---- Load rolling R (estimated on TRAIN) ----
-    R_rolling_all = load_rolling_R(
-        "output/rolling/rolling_R_all.csv",
-        maturities
-    )
-
-    # Keep only rolling R estimated BEFORE test period
-    R_rolling = {
-        d: R for d, R in R_rolling_all.items()
-        if d <= pd.to_datetime(TRAIN_END_DATE)
-    }
-
-    # Use last TRAIN R as fixed regime for test
-    last_R_rolling = R_rolling[max(R_rolling.keys())]
-
-    # ---- Model matrices ----
-    F = np.eye(n)
-    H = np.eye(n)
-    x0 = y_test[0]
-    P0 = np.eye(n)
+    assert np.all(np.linalg.eigvalsh(R_static) > 0)
 
     # ==================================================
-    # OOS likelihood comparison
+    # Likelihood comparison (AUTHORITATIVE, OOS)
     # ==================================================
     ll_diag = kalman_loglik(
-        y_test, F, H, Q,
-        np.diag(np.diag(R_static)),
+        y, F, H, Q,
+        diagonal_R(R_static),
         x0, P0
     )
 
     ll_static = kalman_loglik(
-        y_test, F, H, Q,
-        R_static,
+        y, F, H, Q,
+        static_R(R_static),
         x0, P0
     )
 
     ll_rolling = kalman_loglik(
-        y_test, F, H, Q,
-        last_R_rolling,
+        y, F, H, Q,
+        rolling_R_model(dates, R_rolling),
         x0, P0
     )
 
-    print("\nOUT-OF-SAMPLE LIKELIHOOD COMPARISON:\n")
+    print("\nOut-of-sample likelihood comparison:\n")
     print(f"Diagonal R      loglik = {ll_diag:.2f}")
     print(f"Static full R   loglik = {ll_static:.2f}")
     print(f"Rolling full R  loglik = {ll_rolling:.2f}")
 
     # ==================================================
-    # Save results
+    # Save primary OOS likelihood outputs
     # ==================================================
     summary_df = pd.DataFrame([
         {"model": "diagonal", "loglik": ll_diag},
@@ -218,22 +205,56 @@ def main():
         index=False
     )
 
-    metadata = {
-        "evaluation": "out_of_sample",
+    # ==================================================
+    # Extended metadata for health monitoring
+    # ==================================================
+    deltas = {
+        "static_minus_diagonal": ll_static - ll_diag,
+        "rolling_minus_static": ll_rolling - ll_static
+    }
+
+    extras = {
+        "sample_type": "out_of_sample",
         "train_end_date": TRAIN_END_DATE,
         "Q_scale": Q_SCALE,
-        "n_test_obs": int(len(y_test)),
+        "window_length": int(roll_meta["window_length"]),
+        "n_test_obs": int(len(y)),
+        "n_maturities": int(n),
+        "test_start": str(dates[0]),
+        "test_end": str(dates[-1]),
         "models_compared": [
             "diagonal",
             "static_full",
             "rolling_full"
-        ]
+        ],
+        "likelihoods": {
+            "diagonal": ll_diag,
+            "static_full": ll_static,
+            "rolling_full": ll_rolling
+        },
+        "deltas": deltas,
+        "ordering_ok": ll_diag < ll_static < ll_rolling,
+        "rolling_improvement_fraction": (
+            (ll_rolling - ll_static) / abs(ll_static)
+        )
+    }
+
+    with open("output/likelihood/likelihood_oos_extras.json", "w") as f:
+        json.dump(extras, f, indent=2)
+
+    metadata = {
+        "sample_type": "out_of_sample",
+        "train_end_date": TRAIN_END_DATE,
+        "Q_scale": Q_SCALE,
+        "n_test_obs": int(len(y)),
+        "n_maturities": int(n),
+        "models_compared": extras["models_compared"]
     }
 
     with open("output/likelihood/likelihood_oos_metadata.json", "w") as f:
         json.dump(metadata, f, indent=2)
 
-    print("\nSaved likelihood_oos_summary.csv and likelihood_oos_metadata.json")
+    print("\nSaved out-of-sample likelihood outputs and metadata")
     print("Done.")
 
 

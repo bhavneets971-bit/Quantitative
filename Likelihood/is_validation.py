@@ -7,7 +7,9 @@ Diagonal, static full, and rolling full observation
 error covariance models compared via Kalman filter
 innovation log-likelihood.
 
-All models are evaluated on the identical sample.
+This script is AUTHORITATIVE for in-sample likelihood
+comparison. No logic is removed — only metadata is added
+to support downstream health monitoring.
 """
 
 import numpy as np
@@ -131,6 +133,11 @@ def main():
         maturities
     )
 
+    # ---- Load rolling metadata (for health checks) ----
+    roll_meta = pd.read_csv(
+        "output/rolling/rolling_R_metadata.csv"
+    ).iloc[0]
+
     # ---- Force identical evaluation dates ----
     df = df[df["Date"].isin(R_rolling.keys())].copy()
     df = df.sort_values("Date")
@@ -155,7 +162,7 @@ def main():
     assert np.all(np.linalg.eigvalsh(R_static) > 0)
 
     # ==================================================
-    # Likelihood comparison
+    # Likelihood comparison (AUTHORITATIVE)
     # ==================================================
     ll_diag = kalman_loglik(
         y, F, H, Q,
@@ -175,13 +182,13 @@ def main():
         x0, P0
     )
 
-    print("\nLikelihood comparison (common sample):\n")
+    print("\nIn-sample likelihood comparison:\n")
     print(f"Diagonal R      loglik = {ll_diag:.2f}")
     print(f"Static full R   loglik = {ll_static:.2f}")
     print(f"Rolling full R  loglik = {ll_rolling:.2f}")
 
     # ==================================================
-    # >>> HEALTH REPORT SUPPORT: save results
+    # Save primary likelihood outputs (UNCHANGED)
     # ==================================================
     summary_df = pd.DataFrame([
         {"model": "diagonal", "loglik": ll_diag},
@@ -190,12 +197,22 @@ def main():
     ])
 
     summary_df.to_csv(
-        "output/likelihood/likelihood_summary.csv",
+        "output/likelihood/likelihood_is_summary.csv",
         index=False
     )
 
-    metadata = {
+    # ==================================================
+    # Extended metadata for health monitoring (NEW)
+    # ==================================================
+    deltas = {
+        "static_minus_diagonal": ll_static - ll_diag,
+        "rolling_minus_static": ll_rolling - ll_static
+    }
+
+    extras = {
+        "sample_type": "in_sample",
         "Q_scale": Q_SCALE,
+        "window_length": int(roll_meta["window_length"]),
         "n_obs": int(len(y)),
         "n_maturities": int(n),
         "sample_start": str(dates[0]),
@@ -204,13 +221,37 @@ def main():
             "diagonal",
             "static_full",
             "rolling_full"
-        ]
+        ],
+        "likelihoods": {
+            "diagonal": ll_diag,
+            "static_full": ll_static,
+            "rolling_full": ll_rolling
+        },
+        "deltas": deltas,
+        "ordering_ok": ll_diag < ll_static < ll_rolling,
+        "rolling_improvement_fraction": (
+            (ll_rolling - ll_static) / abs(ll_static)
+        )
     }
 
-    with open("output/likelihood/likelihood_metadata.json", "w") as f:
+    with open("output/likelihood/likelihood_is_extras.json", "w") as f:
+        json.dump(extras, f, indent=2)
+
+    # ---- Backward-compatible metadata (extended, not broken) ----
+    metadata = {
+        "sample_type": "in_sample",
+        "Q_scale": Q_SCALE,
+        "n_obs": int(len(y)),
+        "n_maturities": int(n),
+        "sample_start": str(dates[0]),
+        "sample_end": str(dates[-1]),
+        "models_compared": extras["models_compared"]
+    }
+
+    with open("output/likelihood/likelihood_is_metadata.json", "w") as f:
         json.dump(metadata, f, indent=2)
 
-    print("\nSaved likelihood_summary.csv and likelihood_metadata.json")
+    print("\nSaved in-sample likelihood outputs and metadata")
     print("Done.")
 
 
