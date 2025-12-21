@@ -1,2 +1,2 @@
 window_length,Q_scale,R_fraction_init,n_maturities,n_windows,start_date,end_date
-252,0.2,0.1,7,7506,1991-01-04,2024-12-30
+378,0.2,0.1,7,7380,1991-07-08,2024-12-30
