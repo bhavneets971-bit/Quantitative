@@ -29,10 +29,13 @@ import matplotlib.pyplot as plt
 # ======================================================
 # Setup
 # ======================================================
+# All outputs from this script are diagnostic only.
+# Creating directories here avoids polluting estimation code.
 os.makedirs("health/plots", exist_ok=True)
 
 
 def section(title):
+    """Pretty-print section headers for readability."""
     print("\n" + "=" * 70)
     print(title)
     print("=" * 70)
@@ -40,13 +43,18 @@ def section(title):
 
 def check(name, condition, level="FAIL"):
     """
-    level: FAIL or WARN
+    Centralized check handler.
+
+    - PASS: condition satisfied
+    - WARN: condition violated but model may still be usable
+    - FAIL: condition violated, model should not be trusted
     """
     status = "PASS" if condition else level
     print(f"[{status:<4}] {name}")
     return status
 
 
+# Collect all statuses to produce a final verdict
 statuses = []
 
 
@@ -56,11 +64,14 @@ statuses = []
 section("Loading artifacts")
 
 # ---- Q diagnostics ----
+# These files summarize innovation whitening behavior
+# across different Q scales tested earlier.
 q_diag = pd.read_csv("output/diagnostics/q_diagnostics.csv")
 with open("output/diagnostics/q_metadata.json") as f:
     q_meta = json.load(f)
 
 # ---- Static R ----
+# Final Desroziers-estimated observation error covariance.
 R_static = pd.read_csv(
     "output/static/observation_error_covariance.csv",
     index_col=0
@@ -70,6 +81,8 @@ with open("output/static/R_metadata.json") as f:
     R_static_meta = json.load(f)
 
 # ---- Rolling R ----
+# Long-format rolling observation error covariances.
+# Used to assess stability and regime behavior.
 R_roll_df = pd.read_csv(
     "output/rolling/rolling_R_all.csv",
     parse_dates=["window_end_date"]
@@ -80,6 +93,7 @@ roll_meta = pd.read_csv(
 ).iloc[0]
 
 # ---- Likelihood ----
+# Likelihood comparison between diagonal, static, and rolling R.
 ll_df = pd.read_csv("output/likelihood/likelihood_summary.csv")
 
 with open("output/likelihood/likelihood_metadata.json") as f:
@@ -91,9 +105,13 @@ with open("output/likelihood/likelihood_metadata.json") as f:
 # ======================================================
 section("Q diagnostics")
 
+# For correctly specified Gaussian innovations:
+#   E[||z_t||] ≈ sqrt(n)
+# where z_t are whitened innovations.
 n = q_meta["n_maturities"]
 expected_norm = np.sqrt(n)
 
+# Pick the Q scale that produces innovations closest to theory.
 best_row = q_diag.iloc[
     (q_diag["z_mean"] - expected_norm).abs().idxmin()
 ]
@@ -101,6 +119,8 @@ best_row = q_diag.iloc[
 statuses.append(
     check(
         "Whitened innovation norm close to sqrt(n)",
+        # If this fails, Q is mis-scaled:
+        # innovations are either over- or under-dispersed.
         abs(best_row["z_mean"] - expected_norm) / expected_norm < 0.15
     )
 )
@@ -108,6 +128,8 @@ statuses.append(
 statuses.append(
     check(
         "State covariance trace is finite",
+        # Ensures the filter is not collapsing (trace → 0)
+        # or exploding (trace → ∞).
         np.isfinite(best_row["mean_trace_P"])
     )
 )
@@ -118,6 +140,8 @@ statuses.append(
 # ======================================================
 section("Static R")
 
+# Observation error covariance must be positive definite.
+# If not, likelihoods and Kalman gains are invalid.
 eigvals = np.linalg.eigvalsh(R_static)
 
 statuses.append(
@@ -132,6 +156,8 @@ diag_R = np.sqrt(np.diag(R_static))
 statuses.append(
     check(
         "Short-end noise larger than long-end noise",
+        # Short maturities typically exhibit higher microstructure noise.
+        # Violation is suspicious but not fatal.
         diag_R[0] > diag_R[-1],
         level="WARN"
     )
@@ -142,6 +168,9 @@ corr = R_static / np.outer(diag_R, diag_R)
 statuses.append(
     check(
         "Nearby maturities more correlated than distant ones",
+        # Yield curve noise should be locally correlated.
+        # If distant maturities are more correlated than neighbors,
+        # the Desroziers estimate may be unstable.
         corr[0, 1] > corr[0, -1],
         level="WARN"
     )
@@ -156,6 +185,8 @@ section("Rolling R")
 dates = []
 traces = []
 
+# Trace(R_t) measures total observation noise variance.
+# We monitor it for explosions, collapse, or extreme instability.
 for date, g in R_roll_df.groupby("window_end_date"):
     mat = g.pivot(
         index="maturity_i",
@@ -171,6 +202,8 @@ traces = np.array(traces)
 statuses.append(
     check(
         "Rolling R trace is stable (relative variability)",
+        # High variability indicates regime changes.
+        # This is expected in financial data, so WARN not FAIL.
         np.std(traces) / np.mean(traces) < 0.75,
         level="WARN"
     )
@@ -179,6 +212,7 @@ statuses.append(
 statuses.append(
     check(
         "Sufficient number of rolling windows",
+        # Ensures rolling diagnostics are statistically meaningful.
         roll_meta["n_windows"] > 100
     )
 )
@@ -189,6 +223,8 @@ statuses.append(
 # ======================================================
 section("Rolling R diagnostic plot")
 
+# Visual inspection is essential for distinguishing
+# regime behavior from numerical instability.
 plt.figure(figsize=(12, 4))
 plt.plot(dates, traces, lw=1)
 plt.title("Rolling Observation Error Variance (trace(Rₜ))")
@@ -214,6 +250,7 @@ ll = ll_df.set_index("model")["loglik"]
 statuses.append(
     check(
         "Likelihood ordering: diagonal < static < rolling",
+        # If this fails, added R structure is not improving the model.
         ll["diagonal"] < ll["static_full"] < ll["rolling_full"]
     )
 )
@@ -221,6 +258,7 @@ statuses.append(
 statuses.append(
     check(
         "Rolling likelihood improvement is material",
+        # Prevents declaring victory for negligible gains.
         (ll["rolling_full"] - ll["static_full"])
         > 0.005 * abs(ll["static_full"]),
         level="WARN"
@@ -236,6 +274,8 @@ section("Cross-consistency")
 statuses.append(
     check(
         "Q scale consistent across scripts",
+        # Ensures likelihood validation uses the same
+        # Q that passed whitening diagnostics.
         R_static_meta["Q_scale"] in q_meta["Q_scales_tested"]
     )
 )
@@ -243,6 +283,7 @@ statuses.append(
 statuses.append(
     check(
         "Number of maturities consistent",
+        # Prevents silent dimension mismatch across artifacts.
         q_meta["n_maturities"] == ll_meta["n_maturities"]
     )
 )
