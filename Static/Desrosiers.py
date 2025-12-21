@@ -232,8 +232,14 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
+import json
 
+# ======================================================
+# Ensure output directories exist
+# ======================================================
+os.makedirs("output/static", exist_ok=True)
 os.makedirs("Static/plots", exist_ok=True)
+
 
 # ======================================================
 # 1. Load and prepare data
@@ -250,7 +256,9 @@ def load_yield_data(csv_path):
 
     df = df[["Date"] + maturities].dropna(subset=maturities)
     y = df[maturities].values
-    return y, maturities
+    dates = df["Date"].values
+
+    return y, dates, maturities
 
 
 # ======================================================
@@ -258,8 +266,8 @@ def load_yield_data(csv_path):
 # ======================================================
 def run_kalman_filter(
     y,
-    Q_scale=0.2,     # ← tuned elsewhere via whitening
-    R_fraction=0.1,  # ← principled initial R
+    Q_scale=0.2,
+    R_fraction=0.1,
     burn_in=50
 ):
     T, n = y.shape
@@ -267,16 +275,12 @@ def run_kalman_filter(
     F = np.eye(n)
     H = np.eye(n)
 
-    # ==================================================
-    # PRINCIPLED Q: empirical yield change covariance
-    # ==================================================
+    # ---- Empirical Q anchor ----
     dy = np.diff(y, axis=0)
     Q_base = np.cov(dy.T)
     Q = Q_scale * Q_base
 
-    # ==================================================
-    # PRINCIPLED INITIAL R: fraction of one-step variance
-    # ==================================================
+    # ---- Principled initial R ----
     R = np.diag(R_fraction * np.diag(Q_base))
 
     x = y[0].copy()
@@ -286,17 +290,13 @@ def run_kalman_filter(
     analysis_residuals = []
 
     for t in range(1, T):
-
-        # ---- Forecast ----
         x_b = F @ x
         P_b = F @ P @ F.T + Q
 
-        # ---- Innovation ----
         d_b = y[t] - H @ x_b
         S = H @ P_b @ H.T + R
         K = P_b @ H.T @ np.linalg.solve(S, np.eye(n))
 
-        # ---- Analysis ----
         x = x_b + K @ d_b
         P = (np.eye(n) - K @ H) @ P_b
         d_a = y[t] - H @ x
@@ -332,7 +332,7 @@ def make_pd(matrix, eps=1e-8):
 
 
 # ======================================================
-# 5. Save covariance and correlation
+# 5. Save covariance, correlation, and metadata
 # ======================================================
 def save_results(R, maturities):
     cov_df = pd.DataFrame(R, index=maturities, columns=maturities)
@@ -344,10 +344,6 @@ def save_results(R, maturities):
     cov_df.to_csv("output/static/observation_error_covariance.csv")
     corr_df.to_csv("output/static/observation_error_correlation.csv")
 
-    print("\nSaved:")
-    print(" - observation_error_covariance.csv")
-    print(" - observation_error_correlation.csv")
-
     plt.figure(figsize=(10, 8))
     plt.imshow(corr, aspect="auto")
     plt.colorbar(label="Correlation")
@@ -355,7 +351,6 @@ def save_results(R, maturities):
     plt.yticks(range(len(maturities)), maturities)
     plt.title("Desroziers Observation Error Correlation")
     plt.tight_layout()
-    
     plt.savefig("Static/plots/static_correlation.png")
     plt.close()
 
@@ -365,15 +360,19 @@ def save_results(R, maturities):
 # ======================================================
 if __name__ == "__main__":
 
-    y, maturities = load_yield_data(
+    Q_SCALE = 0.2
+    R_FRACTION = 0.1
+    BURN_IN = 50
+
+    y, dates, maturities = load_yield_data(
         "data/yield-curve-rates-1990-2024.csv"
     )
 
     innovations, analysis_residuals = run_kalman_filter(
         y,
-        Q_scale=0.2,     # ← from Q diagnostics
-        R_fraction=0.1,  # ← principled initial R
-        burn_in=50
+        Q_scale=Q_SCALE,
+        R_fraction=R_FRACTION,
+        burn_in=BURN_IN
     )
 
     R_est = desrosiers_covariance(innovations, analysis_residuals)
@@ -381,4 +380,21 @@ if __name__ == "__main__":
 
     save_results(R_pd, maturities)
 
-    print("\nDone.")
+    # ==================================================
+    # >>> HEALTH REPORT SUPPORT: save metadata
+    # ==================================================
+    metadata = {
+        "Q_scale": Q_SCALE,
+        "R_fraction_init": R_FRACTION,
+        "burn_in": BURN_IN,
+        "n_obs": int(len(innovations)),
+        "n_maturities": int(len(maturities)),
+        "start_date": str(dates[0]),
+        "end_date": str(dates[-1])
+    }
+
+    with open("output/static/R_metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    print("\nSaved static R and metadata.")
+    print("Done.")

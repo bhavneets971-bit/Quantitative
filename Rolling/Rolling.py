@@ -22,6 +22,12 @@ Outputs:
 
 import numpy as np
 import pandas as pd
+import os
+
+# ======================================================
+# Ensure output directories exist
+# ======================================================
+os.makedirs("output/rolling", exist_ok=True)
 
 
 # ======================================================
@@ -50,24 +56,20 @@ def load_yield_data(csv_path):
 # ======================================================
 def run_kalman_filter(
     y,
-    Q_scale=0.2,     # ← from Q diagnostics
-    R_fraction=0.1   # ← principled initial R
+    Q_scale=0.2,
+    R_fraction=0.1
 ):
     T, n = y.shape
 
     F = np.eye(n)
     H = np.eye(n)
 
-    # ==================================================
-    # Empirical Q anchor
-    # ==================================================
+    # ---- Empirical Q anchor ----
     dy = np.diff(y, axis=0)
     Q_base = np.cov(dy.T)
     Q = Q_scale * Q_base
 
-    # ==================================================
-    # Principled initial R
-    # ==================================================
+    # ---- Principled initial R ----
     R = np.diag(R_fraction * np.diag(Q_base))
 
     x = y[0].copy()
@@ -77,16 +79,13 @@ def run_kalman_filter(
     analysis_residuals = []
 
     for t in range(1, T):
-        # Forecast
         x_b = F @ x
         P_b = P + Q
 
-        # Innovation
         d_b = y[t] - x_b
         S = P_b + R
         K = P_b @ np.linalg.inv(S)
 
-        # Update
         x = x_b + K @ d_b
         P = (np.eye(n) - K) @ P_b
 
@@ -142,7 +141,9 @@ def rolling_desrosiers_R(innovations, analysis_residuals, dates, window):
 # ======================================================
 if __name__ == "__main__":
 
-    WINDOW_LENGTH = 252  # ~1 trading year
+    WINDOW_LENGTH = 252
+    Q_SCALE = 0.2
+    R_FRACTION = 0.1
 
     y, dates, maturities = load_yield_data(
         "data/yield-curve-rates-1990-2024.csv"
@@ -150,8 +151,8 @@ if __name__ == "__main__":
 
     innovations, analysis_residuals = run_kalman_filter(
         y,
-        Q_scale=0.2,     # ← use value validated by whitening
-        R_fraction=0.1   # ← principled initial R
+        Q_scale=Q_SCALE,
+        R_fraction=R_FRACTION
     )
 
     R_rolling, meta = rolling_desrosiers_R(
@@ -186,5 +187,23 @@ if __name__ == "__main__":
         index=False
     )
 
-    print("Saved rolling_R_all.csv")
+    # ==================================================
+    # >>> HEALTH REPORT SUPPORT: save metadata
+    # ==================================================
+    meta_df = pd.DataFrame([{
+        "window_length": WINDOW_LENGTH,
+        "Q_scale": Q_SCALE,
+        "R_fraction_init": R_FRACTION,
+        "n_maturities": len(maturities),
+        "n_windows": len(R_rolling),
+        "start_date": meta[0]["window_end_date"],
+        "end_date": meta[-1]["window_end_date"]
+    }])
+
+    meta_df.to_csv(
+        "output/rolling/rolling_R_metadata.csv",
+        index=False
+    )
+
+    print("Saved rolling_R_all.csv and rolling_R_metadata.csv")
     print("Done.")

@@ -1,0 +1,9 @@
+{
+  "Q_scale": 0.2,
+  "R_fraction_init": 0.1,
+  "burn_in": 50,
+  "n_obs": 7708,
+  "n_maturities": 7,
+  "start_date": "1990-01-02T00:00:00.000000000",
+  "end_date": "2024-12-31T00:00:00.000000000"
+}

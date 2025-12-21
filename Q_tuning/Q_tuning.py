@@ -17,6 +17,14 @@ It is intended to calibrate Q scale only.
 
 import numpy as np
 import pandas as pd
+import os
+import json
+
+
+# ======================================================
+# Ensure output directories exist
+# ======================================================
+os.makedirs("output/diagnostics", exist_ok=True)
 
 
 # ======================================================
@@ -24,8 +32,6 @@ import pandas as pd
 # ======================================================
 def kalman_q_diagnostics(y, Q, R):
     T, n = y.shape
-    F = np.eye(n)
-    H = np.eye(n)
 
     x = y[0].copy()
     P = np.eye(n)
@@ -55,9 +61,9 @@ def kalman_q_diagnostics(y, Q, R):
         P_traces.append(np.trace(P))
 
     return (
-        np.mean(whitened_norms),
-        np.std(whitened_norms),
-        np.mean(P_traces),
+        float(np.mean(whitened_norms)),
+        float(np.std(whitened_norms)),
+        float(np.mean(P_traces)),
     )
 
 
@@ -73,42 +79,67 @@ def main():
 
     maturities = ["3 Mo", "6 Mo", "1 Yr", "2 Yr", "5 Yr", "10 Yr", "30 Yr"]
     df = df[maturities].dropna(subset=maturities)
+
     y = df.values
-    _, n = y.shape
+    T, n = y.shape
 
     # ---- Empirical Q anchor ----
     dy = np.diff(y, axis=0)
     Q_base = np.cov(dy.T)
 
     # ==================================================
-    # PRINCIPLED INITIAL R
+    # Principled initial R
     # ==================================================
-    # R explains only obvious measurement noise
-    # Set as a small fraction of one-step yield variance
-    alpha_R = 0.1  # 10% is a good default
-    R = np.diag(alpha_R * np.diag(Q_base))
+    ALPHA_R = 0.1
+    R = np.diag(ALPHA_R * np.diag(Q_base))
 
-    print(R)
-    
     # ---- Q scale grid ----
     Q_scales = [0.1, 0.2, 0.25, 0.3]
 
     print("\nQ diagnostics:\n")
     print("Expected ||z|| ≈ sqrt(n) ≈", np.sqrt(n))
-    print(f"Initial R scale = {alpha_R:.0%} of diag(Q_base)")
-    print("")
+    print(f"Initial R scale = {ALPHA_R:.0%} of diag(Q_base)\n")
+
+    rows = []
 
     for scale in Q_scales:
         Q = scale * Q_base
 
         z_mean, z_std, P_trace = kalman_q_diagnostics(y, Q, R)
 
+        rows.append({
+            "Q_scale": scale,
+            "z_mean": z_mean,
+            "z_std": z_std,
+            "mean_trace_P": P_trace
+        })
+
         print(f"Q scale = {scale:.2f}")
         print(f"  mean ||whitened z|| : {z_mean:.2f}")
         print(f"  std  ||whitened z|| : {z_std:.2f}")
-        print(f"  mean trace(P)      : {P_trace:.4e}")
-        print("")
+        print(f"  mean trace(P)      : {P_trace:.4e}\n")
 
+    # ==================================================
+    # >>> HEALTH REPORT SUPPORT: save diagnostics
+    # ==================================================
+    diagnostics_df = pd.DataFrame(rows)
+    diagnostics_df.to_csv(
+        "output/diagnostics/q_diagnostics.csv",
+        index=False
+    )
+
+    metadata = {
+        "alpha_R": ALPHA_R,
+        "n_obs": int(T),
+        "n_maturities": int(n),
+        "Q_scales_tested": Q_scales,
+        "expected_whitened_norm": float(np.sqrt(n))
+    }
+
+    with open("output/diagnostics/q_metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    print("Saved q_diagnostics.csv and q_metadata.json")
     print("Done.")
 
 

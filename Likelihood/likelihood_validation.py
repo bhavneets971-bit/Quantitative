@@ -12,6 +12,14 @@ All models are evaluated on the identical sample.
 
 import numpy as np
 import pandas as pd
+import os
+import json
+
+
+# ======================================================
+# Ensure output directories exist
+# ======================================================
+os.makedirs("output/likelihood", exist_ok=True)
 
 
 # ======================================================
@@ -35,23 +43,20 @@ def kalman_loglik(y, F, H, Q, R_model, x0, P0):
     ll = 0.0
 
     for t in range(1, T):
-        # Forecast
         x_b = F @ x
         P_b = F @ P @ F.T + Q
 
-        # Innovation
         d = y[t] - H @ x_b
         R = R_model(t)
         S = H @ P_b @ H.T + R
 
         ll += loglik_gaussian(d, S)
 
-        # Update
         K = P_b @ H.T @ np.linalg.solve(S, np.eye(n))
         x = x_b + K @ d
         P = (np.eye(n) - K @ H) @ P_b
 
-    return ll
+    return float(ll)
 
 
 # ======================================================
@@ -117,8 +122,8 @@ def main():
     Q_base = np.cov(dy.T)
 
     # ---- Use validated Q scale ----
-    Q_scale = 0.2   # ← must match earlier diagnostics
-    Q = Q_scale * Q_base
+    Q_SCALE = 0.2
+    Q = Q_SCALE * Q_base
 
     # ---- Load rolling R ----
     R_rolling = load_rolling_R(
@@ -152,8 +157,6 @@ def main():
     # ==================================================
     # Likelihood comparison
     # ==================================================
-    print("\nLikelihood comparison (common sample):\n")
-
     ll_diag = kalman_loglik(
         y, F, H, Q,
         diagonal_R(R_static),
@@ -172,11 +175,43 @@ def main():
         x0, P0
     )
 
+    print("\nLikelihood comparison (common sample):\n")
     print(f"Diagonal R      loglik = {ll_diag:.2f}")
     print(f"Static full R   loglik = {ll_static:.2f}")
     print(f"Rolling full R  loglik = {ll_rolling:.2f}")
 
-    print("\nDone.")
+    # ==================================================
+    # >>> HEALTH REPORT SUPPORT: save results
+    # ==================================================
+    summary_df = pd.DataFrame([
+        {"model": "diagonal", "loglik": ll_diag},
+        {"model": "static_full", "loglik": ll_static},
+        {"model": "rolling_full", "loglik": ll_rolling},
+    ])
+
+    summary_df.to_csv(
+        "output/likelihood/likelihood_summary.csv",
+        index=False
+    )
+
+    metadata = {
+        "Q_scale": Q_SCALE,
+        "n_obs": int(len(y)),
+        "n_maturities": int(n),
+        "sample_start": str(dates[0]),
+        "sample_end": str(dates[-1]),
+        "models_compared": [
+            "diagonal",
+            "static_full",
+            "rolling_full"
+        ]
+    }
+
+    with open("output/likelihood/likelihood_metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    print("\nSaved likelihood_summary.csv and likelihood_metadata.json")
+    print("Done.")
 
 
 if __name__ == "__main__":
