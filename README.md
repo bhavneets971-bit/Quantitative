@@ -159,7 +159,7 @@ This confirms that modelling correlated and time-varying observation noise mater
 
 ---
 
-## What This Project Is — and Is Not
+## What This Project Is and Is Not
 
 **This project is:**
 - A rigorous diagnostic and validation framework  
