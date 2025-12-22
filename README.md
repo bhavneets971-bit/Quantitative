@@ -7,7 +7,7 @@
 
 This project is not a trading strategy, and it is not intended to generate direct buy or sell signals. Its value sits one level deeper, in how market data is interpreted *before* any trading or portfolio decision is made.
 
-In fixed-income markets, many signals are driven by relatively small changes in the yield curve (level, slope, curvature). If observation noise is mis-specified — especially if correlated noise is treated as independent — models tend to overreact to routine market fluctuations. This leads to false signals, unstable factor estimates, excessive turnover, and misleading backtests.
+In fixed-income markets, many signals are driven by relatively small changes in the yield curve (level, slope, curvature). If observation noise is mis-specified, especially if correlated noise is treated as independent, models tend to overreact to routine market fluctuations. This leads to false signals, unstable factor estimates, excessive turnover, and misleading backtests.
 
 By explicitly modelling **correlated observation errors**, this framework helps separate genuine yield curve movements from shared measurement noise. In practice, this produces smoother state estimates, more stable factor extraction, and more realistic uncertainty estimates. These improvements matter directly for position sizing, risk management, and the robustness of downstream models.
 
