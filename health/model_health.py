@@ -10,6 +10,7 @@ consuming saved outputs from:
 - Q diagnostics
 - Static Desroziers R estimation
 - Rolling Desroziers R estimation
+- Rolling R eigenvalue diagnostics
 - In-sample likelihood comparison (IS)
 - Out-of-sample likelihood comparison (OOS)
 
@@ -30,7 +31,8 @@ import matplotlib.pyplot as plt
 # ======================================================
 # Setup
 # ======================================================
-os.makedirs("health/plots", exist_ok=True)
+PLOT_DIR = "health/plots"
+os.makedirs(PLOT_DIR, exist_ok=True)
 
 
 def section(title):
@@ -76,6 +78,12 @@ R_roll_df = pd.read_csv(
 roll_meta = pd.read_csv(
     "output/rolling/rolling_R_metadata.csv"
 ).iloc[0]
+
+# ---- Rolling R eigenvalues ----
+eig_path = "output/eigen/rolling_R_eigenvalues.csv"
+eig_df = None
+if os.path.exists(eig_path):
+    eig_df = pd.read_csv(eig_path, parse_dates=["window_end_date"])
 
 # ---- Likelihood (IS + OOS) ----
 ll_is_df = pd.read_csv("output/likelihood/likelihood_is_summary.csv")
@@ -166,11 +174,18 @@ for date, g in R_roll_df.groupby("window_end_date"):
     traces.append(np.trace(mat))
 
 dates = pd.to_datetime(dates)
-traces = np.array(traces)
+traces = np.asarray(traces)
 
 statuses.append(
     check(
-        "Rolling R trace is stable (relative variability)",
+        "Rolling R trace strictly positive",
+        np.all(traces > 0)
+    )
+)
+
+statuses.append(
+    check(
+        "Rolling R trace stability (relative variability)",
         np.std(traces) / np.mean(traces) < 0.75,
         level="WARN"
     )
@@ -182,6 +197,80 @@ statuses.append(
         roll_meta["n_windows"] > 100
     )
 )
+
+
+# ======================================================
+# 3b. Rolling R eigenvalue / PSD diagnostics
+# ======================================================
+section("Rolling R eigenvalue diagnostics")
+
+EIG_DIR = "Rolling/diagnostics"
+
+eigvals_path = os.path.join(EIG_DIR, "R_eigenvalues.csv")
+eigsum_path = os.path.join(EIG_DIR, "R_eigen_summary.csv")
+
+if not (os.path.exists(eigvals_path) and os.path.exists(eigsum_path)):
+    statuses.append(
+        check(
+            "Eigenvalue diagnostics available",
+            False
+        )
+    )
+else:
+    eigvals_df = pd.read_csv(eigvals_path, parse_dates=["date"])
+    eigsum_df = pd.read_csv(eigsum_path, parse_dates=["date"])
+
+    # ---- PSD check ----
+    lambda_cols = [c for c in eigvals_df.columns if c.startswith("lambda_")]
+    min_eig = eigvals_df[lambda_cols].min(axis=1)
+
+    statuses.append(
+        check(
+            "No negative eigenvalues in rolling R",
+            (min_eig > 0).all()
+        )
+    )
+
+    # ---- Conditioning / rank diagnostics ----
+    statuses.append(
+        check(
+            "Rolling R effective rank reasonable (median)",
+            eigsum_df["effective_rank"].median() > 0.5 * len(lambda_cols),
+            level="WARN"
+        )
+    )
+
+    statuses.append(
+        check(
+            "No extreme eigenvalue dominance",
+            eigsum_df["lambda1_fraction"].median() < 0.9,
+            level="WARN"
+        )
+    )
+
+    # ---- Cross-check: trace consistency ----
+    merged = pd.merge(
+        eigsum_df[["date", "trace_R"]],
+        pd.DataFrame({
+            "date": dates,
+            "trace_from_R": traces
+        }),
+        on="date",
+        how="inner"
+    )
+
+    statuses.append(
+        check(
+            "Eigenvalue trace matches rolling R trace",
+            np.allclose(
+                merged["trace_R"],
+                merged["trace_from_R"],
+                rtol=1e-6
+            ),
+            level="WARN"
+        )
+    )
+
 
 
 # ======================================================
@@ -197,7 +286,7 @@ plt.ylabel("trace(Rₜ)")
 plt.grid(alpha=0.3)
 plt.tight_layout()
 
-plot_path = "health/plots/rolling_R_trace.png"
+plot_path = os.path.join(PLOT_DIR, "rolling_R_trace.png")
 plt.savefig(plot_path)
 plt.close()
 
@@ -208,8 +297,6 @@ print(f"Saved rolling R trace plot → {plot_path}")
 # 5. Likelihood validation — IN-SAMPLE
 # ======================================================
 section("Likelihood validation (IN-SAMPLE)")
-
-ll_is = ll_is_df.set_index("model")["loglik"]
 
 statuses.append(
     check(
