@@ -246,7 +246,7 @@ os.makedirs("Static/plots", exist_ok=True)
 # ======================================================
 def load_yield_data(csv_path):
     df = pd.read_csv(csv_path)
-    df["Date"] = pd.to_datetime(df["Date"])
+    df["Date"] = pd.to_datetime(df["Date"], format="%m/%d/%y")
     df = df.sort_values("Date")
 
     maturities = [
@@ -266,7 +266,7 @@ def load_yield_data(csv_path):
 # ======================================================
 def run_kalman_filter(
     y,
-    Q_scale=0.2,
+    Q_scale=0.25,
     R_fraction=0.1,
     burn_in=50
 ):
@@ -360,7 +360,7 @@ def save_results(R, maturities):
 # ======================================================
 if __name__ == "__main__":
 
-    Q_SCALE = 0.2
+    Q_SCALE = 0.25
     R_FRACTION = 0.1
     BURN_IN = 50
 

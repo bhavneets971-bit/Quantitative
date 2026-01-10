@@ -124,7 +124,7 @@ def main():
     Q_base = np.cov(dy.T)
 
     # ---- Use validated Q scale ----
-    Q_SCALE = 0.2
+    Q_SCALE = 0.25
     Q = Q_SCALE * Q_base
 
     # ---- Load rolling R ----

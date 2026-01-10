@@ -1,6 +1,6 @@
 {
   "sample_type": "in_sample",
-  "Q_scale": 0.2,
+  "Q_scale": 0.25,
   "n_obs": 8374,
   "n_maturities": 6,
   "sample_start": "1991-07-08T00:00:00.000000000",

@@ -1,7 +1,7 @@
 {
   "sample_type": "out_of_sample",
   "train_end_date": "2014-12-31",
-  "Q_scale": 0.2,
+  "Q_scale": 0.25,
   "window_length": 378,
   "n_test_obs": 2500,
   "n_maturities": 6,
@@ -13,14 +13,14 @@
     "rolling_full"
   ],
   "likelihoods": {
-    "diagonal": 29814.895453439414,
-    "static_full": 31931.40888452097,
-    "rolling_full": 33365.47949967128
+    "diagonal": 30581.600956919014,
+    "static_full": 32397.650835250985,
+    "rolling_full": 33719.51745924401
   },
   "deltas": {
-    "static_minus_diagonal": 2116.5134310815556,
-    "rolling_minus_static": 1434.070615150311
+    "static_minus_diagonal": 1816.0498783319708,
+    "rolling_minus_static": 1321.8666239930244
   },
   "ordering_ok": true,
-  "rolling_improvement_fraction": 0.04491097215085581
+  "rolling_improvement_fraction": 0.04080131089488556
 }

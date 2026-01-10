@@ -1,12 +1,12 @@
 {
   "alpha_R": 0.1,
-  "n_obs": 7759,
-  "n_maturities": 7,
+  "n_obs": 8753,
+  "n_maturities": 6,
   "Q_scales_tested": [
     0.1,
     0.2,
     0.25,
     0.3
   ],
-  "expected_whitened_norm": 2.6457513110645907
+  "expected_whitened_norm": 2.449489742783178
 }

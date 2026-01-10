@@ -107,7 +107,7 @@ def load_rolling_R(csv_path, maturities):
 def main():
 
     # ---- Configuration ----
-    Q_SCALE = 0.2
+    Q_SCALE = 0.25
     TRAIN_END_DATE = "2014-12-31"   # explicit, auditable split
 
     # ---- Load yield data ----

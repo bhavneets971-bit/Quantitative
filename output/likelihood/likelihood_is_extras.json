@@ -1,6 +1,6 @@
 {
   "sample_type": "in_sample",
-  "Q_scale": 0.2,
+  "Q_scale": 0.25,
   "window_length": 378,
   "n_obs": 8374,
   "n_maturities": 6,
@@ -12,14 +12,14 @@
     "rolling_full"
   ],
   "likelihoods": {
-    "diagonal": 89841.50726989868,
-    "static_full": 97605.22514547595,
-    "rolling_full": 104274.04560576592
+    "diagonal": 93519.9317694016,
+    "static_full": 99984.38407586933,
+    "rolling_full": 105965.88941176169
   },
   "deltas": {
-    "static_minus_diagonal": 7763.717875577277,
-    "rolling_minus_static": 6668.820460289964
+    "static_minus_diagonal": 6464.45230646772,
+    "rolling_minus_static": 5981.5053358923615
   },
   "ordering_ok": true,
-  "rolling_improvement_fraction": 0.06832442064807907
+  "rolling_improvement_fraction": 0.05982439549113514
 }

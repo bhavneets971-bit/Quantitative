@@ -1,5 +1,5 @@
 {
-  "Q_scale": 0.2,
+  "Q_scale": 0.25,
   "R_fraction_init": 0.1,
   "burn_in": 50,
   "n_obs": 8702,

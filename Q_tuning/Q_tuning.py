@@ -77,7 +77,7 @@ def main():
     df["Date"] = pd.to_datetime(df["Date"], format="mixed")
     df = df.sort_values("Date")
 
-    maturities = ["3 Mo", "6 Mo", "1 Yr", "2 Yr", "5 Yr", "10 Yr", "30 Yr"]
+    maturities = ["3 Mo", "6 Mo", "1 Yr", "2 Yr", "5 Yr", "10 Yr"]
     df = df[maturities].dropna(subset=maturities)
 
     y = df.values

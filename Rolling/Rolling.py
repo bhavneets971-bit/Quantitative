@@ -48,7 +48,7 @@ def load_yield_data(csv_path):
 # ======================================================
 def run_kalman_filter(
     y,
-    Q_scale=0.2,
+    Q_scale=0.25,
     R_fraction=0.1
 ):
     T, n = y.shape
@@ -207,7 +207,7 @@ if __name__ == "__main__":
     os.makedirs("output/rolling", exist_ok=True)
 
     WINDOW_LENGTH = 378 # Based on Tuning Results
-    Q_SCALE = 0.2
+    Q_SCALE = 0.25
     R_FRACTION = 0.1
 
     y, dates, maturities = load_yield_data(
