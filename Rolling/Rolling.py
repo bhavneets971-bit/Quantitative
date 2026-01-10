@@ -27,7 +27,7 @@ import os
 # ======================================================
 def load_yield_data(csv_path):
     df = pd.read_csv(csv_path)
-    df["Date"] = pd.to_datetime(df["Date"])
+    df["Date"] = pd.to_datetime(df["Date"], format="%m/%d/%y")
     df = df.sort_values("Date")
 
     maturities = [
@@ -114,6 +114,8 @@ def estimate_rolling_R(
     R_rolling = []
     meta = []
 
+    half_window = window_length // 2   
+
     for t in range(window_length, T):
         R_t = np.zeros((n, n))
 
@@ -130,12 +132,17 @@ def estimate_rolling_R(
         R_rolling.append(R_t)
 
         end_date = pd.Timestamp(dates[t])
+        center_index = t - half_window           ### NEW
+        center_date = pd.Timestamp(dates[center_index])  ### NEW
+
         meta.append({
             "window_index": t - window_length,
+            "window_start_date": pd.Timestamp(dates[t - window_length]),  
+            "window_center_date": center_date,                              
             "window_end_date": end_date,
-            "window_end_year": (
-                end_date.year
-                + end_date.dayofyear / 365.25
+            "window_center_year": (
+                center_date.year
+                + center_date.dayofyear / 365.25
             )
         })
 
@@ -159,8 +166,10 @@ def save_rolling_R_long(
             for j, mj in enumerate(maturities):
                 rows.append({
                     "window_index": info["window_index"],
+                    "window_start_date": info["window_start_date"],
+                    "window_center_date": info["window_center_date"],
                     "window_end_date": info["window_end_date"],
-                    "window_end_year": info["window_end_year"],
+                    "window_center_year": info["window_center_year"],
                     "maturity_i": mi,
                     "maturity_j": mj,
                     "covariance": R_t[i, j]
@@ -183,15 +192,15 @@ def save_metadata(
         "R_fraction_init": R_fraction,
         "n_maturities": len(maturities),
         "n_windows": len(meta),
-        "start_date": meta.iloc[0]["window_end_date"],
-        "end_date": meta.iloc[-1]["window_end_date"]
+        "start_date": meta.iloc[0]["window_center_date"],  ### UPDATED
+        "end_date": meta.iloc[-1]["window_center_date"]    ### UPDATED
     }])
 
     summary.to_csv(output_path, index=False)
 
 
 # ======================================================
-# 6. Optional CLI execution
+# 6. CLI execution
 # ======================================================
 if __name__ == "__main__":
 

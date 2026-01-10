@@ -2,41 +2,78 @@ import numpy as np
 import pandas as pd
 import os
 
+# ==================================================
+# Paths
+# ==================================================
+
 INPUT_CSV = "output/rolling/rolling_R_all.csv"
 OUTPUT_DIR = "Rolling/diagnostics"
 
-STEP = 20   # downsampling
-
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-df = pd.read_csv(INPUT_CSV)
+# ==================================================
+# Load rolling R data (explicit date parsing)
+# ==================================================
 
-maturities = df["maturity_i"].unique()
+df = pd.read_csv(
+    INPUT_CSV,
+    parse_dates=[
+        "window_start_date",
+        "window_center_date",
+        "window_end_date"
+    ]
+)
+
+# Use CENTER date for diagnostics
+DATE_COL = "window_center_date"
+
+# ==================================================
+# Stable maturity ordering
+# ==================================================
+
+maturities = sorted(df["maturity_i"].unique())
 n = len(maturities)
+
 windows = sorted(df["window_index"].unique())
 
 R_series = []
 dates = []
 
+# ==================================================
+# Reconstruct R_t matrices
+# ==================================================
+
 for w in windows:
     sub = df[df["window_index"] == w]
+
     R = np.zeros((n, n))
+
     for i, mi in enumerate(maturities):
         for j, mj in enumerate(maturities):
-            R[i, j] = sub.loc[
+            vals = sub.loc[
                 (sub["maturity_i"] == mi) &
                 (sub["maturity_j"] == mj),
                 "covariance"
-            ].values[0]
-    R_series.append(R)
-    dates.append(sub["window_end_date"].iloc[0])
+            ].values
 
-R_series = np.array(R_series)[::STEP]
-dates = np.array(dates)[::STEP]
+            if len(vals) != 1:
+                raise ValueError(
+                    f"Non-unique covariance for window {w}, ({mi}, {mj})"
+                )
+
+            R[i, j] = vals[0]
+
+    R_series.append(R)
+    dates.append(sub[DATE_COL].iloc[0])
+
+R_series = np.asarray(R_series)
+dates = np.asarray(dates)
 
 T = len(R_series)
 
-# EIGENVALUES (CORE DIAGNOSTIC)
+# ==================================================
+# Eigenvalues (core diagnostic)
+# ==================================================
 
 eigvals = np.array([
     np.sort(np.linalg.eigvalsh(R))[::-1]
@@ -54,17 +91,19 @@ eig_df.to_csv(
     index=False
 )
 
-# EIGENVALUE SUMMARY METRICS
+# ==================================================
+# Eigenvalue summary metrics
+# ==================================================
 
-trace = eigvals.sum(axis=1)
-effective_rank = (trace ** 2) / (eigvals ** 2).sum(axis=1)
-dominance = eigvals[:, 0] / trace
+trace_R = eigvals.sum(axis=1)
+effective_rank = (trace_R ** 2) / (eigvals ** 2).sum(axis=1)
+lambda1_fraction = eigvals[:, 0] / trace_R
 
 summary_df = pd.DataFrame({
     "date": dates,
-    "trace_R": trace,
+    "trace_R": trace_R,
     "effective_rank": effective_rank,
-    "lambda1_fraction": dominance
+    "lambda1_fraction": lambda1_fraction
 })
 
 summary_df.to_csv(
@@ -72,7 +111,9 @@ summary_df.to_csv(
     index=False
 )
 
-# DIAGONAL OF R (VARIANCES)
+# ==================================================
+# Diagonal of R (variances)
+# ==================================================
 
 diag_df = pd.DataFrame(
     np.diagonal(R_series, axis1=1, axis2=2),
@@ -85,7 +126,9 @@ diag_df.to_csv(
     index=False
 )
 
-# MEAN OFF-DIAGONAL CORRELATION
+# ==================================================
+# Mean off-diagonal correlation
+# ==================================================
 
 mean_corr = []
 

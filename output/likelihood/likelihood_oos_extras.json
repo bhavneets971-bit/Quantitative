@@ -4,7 +4,7 @@
   "Q_scale": 0.2,
   "window_length": 378,
   "n_test_obs": 2500,
-  "n_maturities": 7,
+  "n_maturities": 6,
   "test_start": "2015-01-02T00:00:00.000000000",
   "test_end": "2024-12-30T00:00:00.000000000",
   "models_compared": [
@@ -13,14 +13,14 @@
     "rolling_full"
   ],
   "likelihoods": {
-    "diagonal": 34705.87632059147,
-    "static_full": 37857.15832681866,
-    "rolling_full": 39984.608501193645
+    "diagonal": 29814.895453439414,
+    "static_full": 31931.40888452097,
+    "rolling_full": 33365.47949967128
   },
   "deltas": {
-    "static_minus_diagonal": 3151.282006227186,
-    "rolling_minus_static": 2127.450174374986
+    "static_minus_diagonal": 2116.5134310815556,
+    "rolling_minus_static": 1434.070615150311
   },
   "ordering_ok": true,
-  "rolling_improvement_fraction": 0.05619677409510856
+  "rolling_improvement_fraction": 0.04491097215085581
 }

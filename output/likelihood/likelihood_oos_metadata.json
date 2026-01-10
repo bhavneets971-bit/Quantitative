@@ -3,7 +3,7 @@
   "train_end_date": "2014-12-31",
   "Q_scale": 0.2,
   "n_test_obs": 2500,
-  "n_maturities": 7,
+  "n_maturities": 6,
   "models_compared": [
     "diagonal",
     "static_full",

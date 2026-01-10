@@ -55,7 +55,7 @@ os.makedirs("output/rolling", exist_ok=True)
 
 
 # ======================================================
-# Kalman filter OOS likelihood (FIXED R)
+# Kalman filter OOS likelihood
 # ======================================================
 def kalman_oos_loglikelihood(y_test, R_fixed, Q):
     """

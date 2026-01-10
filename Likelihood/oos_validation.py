@@ -117,7 +117,7 @@ def main():
 
     maturities = [
         "3 Mo", "6 Mo", "1 Yr",
-        "2 Yr", "5 Yr", "10 Yr", "30 Yr"
+        "2 Yr", "5 Yr", "10 Yr"
     ]
 
     df = df[["Date"] + maturities].dropna(subset=maturities)
