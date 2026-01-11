@@ -2,24 +2,24 @@
   "sample_type": "in_sample",
   "Q_scale": 0.25,
   "window_length": 378,
-  "n_obs": 8374,
+  "n_obs": 8324,
   "n_maturities": 6,
-  "sample_start": "1991-07-08T00:00:00.000000000",
-  "sample_end": "2024-12-30T00:00:00.000000000",
+  "sample_start": "1991-09-18T00:00:00.000000000",
+  "sample_end": "2024-12-31T00:00:00.000000000",
   "models_compared": [
     "diagonal",
     "static_full",
     "rolling_full"
   ],
   "likelihoods": {
-    "diagonal": 93519.9317694016,
-    "static_full": 99984.38407586933,
-    "rolling_full": 105965.88941176169
+    "diagonal": 92964.9046412148,
+    "static_full": 99380.0922034586,
+    "rolling_full": 104621.54798350354
   },
   "deltas": {
-    "static_minus_diagonal": 6464.45230646772,
-    "rolling_minus_static": 5981.5053358923615
+    "static_minus_diagonal": 6415.187562243795,
+    "rolling_minus_static": 5241.45578004494
   },
   "ordering_ok": true,
-  "rolling_improvement_fraction": 0.05982439549113514
+  "rolling_improvement_fraction": 0.05274150651132651
 }

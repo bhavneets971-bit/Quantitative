@@ -28,11 +28,24 @@ df = pd.read_csv(
 DATE_COL = "window_center_date"
 
 # ==================================================
-# Stable maturity ordering
+# Maturity ordering
 # ==================================================
 
-maturities = sorted(df["maturity_i"].unique())
+maturities = [
+    "3 Mo", "6 Mo", "1 Yr",
+    "2 Yr", "5 Yr", "10 Yr"
+]
 n = len(maturities)
+
+# Defensive check: ensure CSV matches expected maturities
+csv_maturities = set(df["maturity_i"].unique())
+missing = set(maturities) - csv_maturities
+extra = csv_maturities - set(maturities)
+
+if missing:
+    raise ValueError(f"Missing maturities in rolling CSV: {missing}")
+if extra:
+    raise ValueError(f"Unexpected maturities in rolling CSV: {extra}")
 
 windows = sorted(df["window_index"].unique())
 

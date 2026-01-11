@@ -43,9 +43,25 @@ df = pd.read_csv(
 
 DATE_COL = "window_center_date"
 
-# Stable maturity ordering
-maturities = sorted(df["maturity_i"].unique())
+# ======================================================
+# MATURITY ORDER
+# ======================================================
+
+maturities = [
+    "3 Mo", "6 Mo", "1 Yr",
+    "2 Yr", "5 Yr", "10 Yr"
+]
 n = len(maturities)
+
+# Defensive check
+csv_maturities = set(df["maturity_i"].unique())
+missing = set(maturities) - csv_maturities
+extra = csv_maturities - set(maturities)
+
+if missing:
+    raise ValueError(f"Missing maturities in CSV: {missing}")
+if extra:
+    raise ValueError(f"Unexpected maturities in CSV: {extra}")
 
 windows = sorted(df["window_index"].unique())
 

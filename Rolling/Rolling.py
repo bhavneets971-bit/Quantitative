@@ -2,19 +2,6 @@
 ==========================================================
 Rolling-Window Desroziers Observation Error Estimation
 ==========================================================
-
-Refactored version:
--------------------
-- All logic moved into reusable functions
-- Rolling window length passed as an argument
-- Designed to be imported by tuning scripts
-- Preserves original estimation methodology
-
-Outputs (optional):
--------------------
-- rolling_R_all.csv (long format)
-- rolling_R_metadata.csv
-==========================================================
 """
 
 import numpy as np
@@ -49,7 +36,8 @@ def load_yield_data(csv_path):
 def run_kalman_filter(
     y,
     Q_scale=0.25,
-    R_fraction=0.1
+    R_fraction=0.1,
+    burn_in=50
 ):
     T, n = y.shape
 
@@ -81,8 +69,9 @@ def run_kalman_filter(
 
         d_a = y[t] - x
 
-        innovations.append(d_b)
-        analysis_residuals.append(d_a)
+        if t > burn_in:
+            innovations.append(d_b)
+            analysis_residuals.append(d_a)
 
     return (
         np.asarray(innovations),
@@ -108,15 +97,18 @@ def estimate_rolling_R(
     innovations,
     analysis_residuals,
     dates,
-    window_length
+    window_length,
+    burn_in=50      
 ):
-    T, n = innovations.shape
+    T_res, n = innovations.shape
+
     R_rolling = []
     meta = []
 
-    half_window = window_length // 2   
+    half_window = window_length // 2
 
-    for t in range(window_length, T):
+    for t in range(window_length, T_res):
+
         R_t = np.zeros((n, n))
 
         for s in range(t - window_length, t):
@@ -131,15 +123,18 @@ def estimate_rolling_R(
 
         R_rolling.append(R_t)
 
-        end_date = pd.Timestamp(dates[t])
-        center_index = t - half_window           ### NEW
-        center_date = pd.Timestamp(dates[center_index])  ### NEW
+        center_index = t - half_window
+        center_date = pd.Timestamp(dates[center_index + burn_in + 1])
 
         meta.append({
             "window_index": t - window_length,
-            "window_start_date": pd.Timestamp(dates[t - window_length]),  
-            "window_center_date": center_date,                              
-            "window_end_date": end_date,
+            "window_start_date": pd.Timestamp(
+                dates[t - window_length + burn_in + 1]
+            ),
+            "window_center_date": center_date,
+            "window_end_date": pd.Timestamp(
+                dates[t + burn_in + 1]
+            ),
             "window_center_year": (
                 center_date.year
                 + center_date.dayofyear / 365.25
@@ -192,8 +187,8 @@ def save_metadata(
         "R_fraction_init": R_fraction,
         "n_maturities": len(maturities),
         "n_windows": len(meta),
-        "start_date": meta.iloc[0]["window_center_date"],  ### UPDATED
-        "end_date": meta.iloc[-1]["window_center_date"]    ### UPDATED
+        "start_date": meta.iloc[0]["window_center_date"],
+        "end_date": meta.iloc[-1]["window_center_date"]
     }])
 
     summary.to_csv(output_path, index=False)
@@ -209,6 +204,7 @@ if __name__ == "__main__":
     WINDOW_LENGTH = 378 # Based on Tuning Results
     Q_SCALE = 0.25
     R_FRACTION = 0.1
+    BURN_IN = 50
 
     y, dates, maturities = load_yield_data(
         "data/yield-curve-rates-1990-2024.csv"
@@ -217,14 +213,16 @@ if __name__ == "__main__":
     innovations, analysis_residuals, Q, R0 = run_kalman_filter(
         y,
         Q_scale=Q_SCALE,
-        R_fraction=R_FRACTION
+        R_fraction=R_FRACTION,
+        burn_in=BURN_IN
     )
 
     R_rolling, meta = estimate_rolling_R(
         innovations,
         analysis_residuals,
         dates,
-        window_length=WINDOW_LENGTH
+        window_length=WINDOW_LENGTH,
+        burn_in=BURN_IN
     )
 
     save_rolling_R_long(
