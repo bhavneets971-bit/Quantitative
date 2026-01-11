@@ -17,7 +17,7 @@ This work is designed to be suitable for **quantitative research, model risk rev
 
 This project is **not** a trading strategy and does not produce buy or sell signals. Its value lies one layer deeper: in how market data is **filtered, interpreted, and trusted** *before* any trading or portfolio decision is made.
 
-In fixed-income markets, economically meaningful signals often correspond to small changes in the yield curve (level, slope, curvature). When observation noise is mis-specified—particularly when **correlated measurement noise is incorrectly treated as independent**—state-space models overreact to routine market fluctuations. This leads to false signals, unstable factor estimates, excessive turnover, and misleading backtests.
+In fixed-income markets, economically meaningful signals often correspond to small changes in the yield curve (level, slope, curvature). When observation noise is mis-specified, particularly when **correlated measurement noise is incorrectly treated as independent**, state-space models overreact to routine market fluctuations. This leads to false signals, unstable factor estimates, excessive turnover, and misleading backtests.
 
 By explicitly modeling **correlated observation errors**, this framework separates genuine yield curve movements from shared measurement noise. In practice, this yields smoother state estimates, more stable factor extraction, and more realistic uncertainty estimates. These improvements directly impact **position sizing, risk management, and downstream model robustness**.
 

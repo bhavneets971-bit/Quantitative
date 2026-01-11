@@ -6,10 +6,13 @@ from matplotlib import animation
 from matplotlib.animation import FFMpegWriter
 import os
 
+# ======================================================
+# Configuration
+# ======================================================
+
 INPUT_CSV = "output/rolling/rolling_R_all.csv"
 OUTPUT_DIR = "Rolling/plots"
 
-STEP = 20
 FPS = 20
 DPI = 120
 
@@ -25,42 +28,66 @@ mpl.rcParams["animation.ffmpeg_path"] = (
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# LOAD DATA
+# ======================================================
+# Load rolling R data
+# ======================================================
 
-df = pd.read_csv(INPUT_CSV)
+df = pd.read_csv(
+    INPUT_CSV,
+    parse_dates=[
+        "window_center_date",
+        "window_start_date",
+        "window_end_date"
+    ]
+)
 
-maturities = df["maturity_i"].unique()
+DATE_COL = "window_center_date"
+
+# Stable maturity ordering
+maturities = sorted(df["maturity_i"].unique())
 n = len(maturities)
+
 windows = sorted(df["window_index"].unique())
 
 R_series = []
 dates = []
 
+# ======================================================
+# Reconstruct R_t matrices
+# ======================================================
+
 for w in windows:
     sub = df[df["window_index"] == w]
+
     R = np.zeros((n, n))
     for i, mi in enumerate(maturities):
         for j, mj in enumerate(maturities):
-            R[i, j] = sub.loc[
+            vals = sub.loc[
                 (sub["maturity_i"] == mi) &
                 (sub["maturity_j"] == mj),
                 "covariance"
-            ].values[0]
+            ].values
+
+            if len(vals) != 1:
+                raise ValueError(
+                    f"Non-unique covariance for window {w}, ({mi}, {mj})"
+                )
+
+            R[i, j] = vals[0]
+
     R_series.append(R)
-    dates.append(sub["window_end_date"].iloc[0])
+    dates.append(sub[DATE_COL].iloc[0])
 
-R_series = np.array(R_series)
-dates = np.array(dates)
+R_series = np.asarray(R_series)
+dates = np.asarray(dates)
 
-# DOWNSAMPLE
-
-R_series = R_series[::STEP]
-dates = dates[::STEP]
 T = len(R_series)
-
 print(f"Animating {T} frames")
 
+# ======================================================
 # Correlation matrices
+# ======================================================
+
 R_corr = np.zeros_like(R_series)
 for t in range(T):
     std = np.sqrt(np.diag(R_series[t]))
@@ -68,7 +95,10 @@ for t in range(T):
 
 R_corr = np.clip(R_corr, -1.0, 1.0)
 
+# ======================================================
 # Eigenvalues
+# ======================================================
+
 eigvals = np.array([
     np.sort(np.linalg.eigvalsh(R))[::-1]
     for R in R_series
@@ -76,23 +106,29 @@ eigvals = np.array([
 
 writer = FFMpegWriter(fps=FPS, bitrate=1800)
 
+# ======================================================
 # COVARIANCE HEATMAP ANIMATION
+# ======================================================
 
 vmin_cov = np.min(R_series)
 vmax_cov = np.max(R_series)
 
 fig, ax = plt.subplots(figsize=(7, 6))
 im = ax.imshow(R_series[0], cmap=CMAP_COV, vmin=vmin_cov, vmax=vmax_cov)
+
 ax.set_xticks(range(n))
 ax.set_yticks(range(n))
 ax.set_xticklabels(maturities, rotation=45)
 ax.set_yticklabels(maturities)
-title = ax.set_title(f"Observation Error Covariance\n{dates[0]}")
+
+title = ax.set_title(f"Observation Error Covariance\n{dates[0].date()}")
 plt.colorbar(im, ax=ax, fraction=0.046)
 
 def update_cov(frame):
     im.set_array(R_series[frame])
-    title.set_text(f"Observation Error Covariance\n{dates[frame]}")
+    title.set_text(
+        f"Observation Error Covariance\n{dates[frame].date()}"
+    )
     return im, title
 
 ani_cov = animation.FuncAnimation(fig, update_cov, frames=T)
@@ -105,20 +141,28 @@ plt.close()
 
 print("Saved R_covariance_heatmap.mp4")
 
+# ======================================================
 # CORRELATION HEATMAP ANIMATION
+# ======================================================
 
 fig, ax = plt.subplots(figsize=(7, 6))
 im = ax.imshow(R_corr[0], cmap=CMAP_CORR, vmin=-1, vmax=1)
+
 ax.set_xticks(range(n))
 ax.set_yticks(range(n))
 ax.set_xticklabels(maturities, rotation=45)
 ax.set_yticklabels(maturities)
-title = ax.set_title(f"Observation Error Correlation\n{dates[0]}")
+
+title = ax.set_title(
+    f"Observation Error Correlation\n{dates[0].date()}"
+)
 plt.colorbar(im, ax=ax, fraction=0.046)
 
 def update_corr(frame):
     im.set_array(R_corr[frame])
-    title.set_text(f"Observation Error Correlation\n{dates[frame]}")
+    title.set_text(
+        f"Observation Error Correlation\n{dates[frame].date()}"
+    )
     return im, title
 
 ani_corr = animation.FuncAnimation(fig, update_corr, frames=T)
@@ -131,7 +175,9 @@ plt.close()
 
 print("Saved R_correlation_heatmap.mp4")
 
+# ======================================================
 # EIGENVALUE ANIMATION
+# ======================================================
 
 fig, ax = plt.subplots(figsize=(8, 5))
 lines = []
@@ -146,9 +192,11 @@ ax.set_ylim(
     np.min(eigvals[eigvals > 0]),
     np.max(eigvals)
 )
+
 ax.set_xlabel("Rolling window index")
 ax.set_ylabel("Eigenvalue (log scale)")
 ax.legend()
+
 title = ax.set_title("Observation Error Eigenvalue Spectrum")
 
 def update_eig(frame):
@@ -158,7 +206,7 @@ def update_eig(frame):
             eigvals[:frame + 1, i]
         )
     title.set_text(
-        f"Observation Error Eigenvalue Spectrum\n{dates[frame]}"
+        f"Observation Error Eigenvalue Spectrum\n{dates[frame].date()}"
     )
     return lines + [title]
 
@@ -171,5 +219,4 @@ ani_eig.save(
 plt.close()
 
 print("Saved R_eigenvalues.mp4")
-
 print("All three animations generated successfully.")
